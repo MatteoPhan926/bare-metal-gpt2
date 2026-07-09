@@ -1,0 +1,236 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>A GPT-2 inference engine, written from scratch in C and CUDA</title>
+<meta name="description" content="From-scratch GPT-2-124M inference engine in C and CUDA. Decode at 76-83% of llama.cpp on the same GPU; the prefill gap decomposed into measured factors.">
+<link rel="stylesheet" href="style.css">
+<!-- NOTE (owner): repo URL below is a placeholder — no git remote is configured yet.
+     Search/replace "github.com/phannhan/engine" if the repo lands elsewhere.
+     Links use /blob/HEAD/ so they work on any default branch. -->
+</head>
+<body>
+
+<header>
+  <h1>A GPT-2 inference engine, written from scratch in C and CUDA</h1>
+  <p class="sub">Pure C → CUDA · five optimization stages · every number gated, roofline-checked, and reproducible<br>
+     One model (GPT-2-124M), one GPU (RTX 4060 Laptop, sm_89).</p>
+  <p class="links">
+    <a class="btn" href="https://github.com/phannhan/engine">Code</a>
+    <a class="btn" href="https://github.com/phannhan/engine/blob/HEAD/BENCHMARKS.md">Benchmarks</a>
+    <a class="btn" href="https://github.com/phannhan/engine/blob/HEAD/ROOFLINE.md">Roofline</a>
+    <a class="btn" href="https://github.com/phannhan/engine/blob/HEAD/DESIGN.md">Design log</a>
+  </p>
+</header>
+
+<main>
+
+<section>
+  <h2>Abstract</h2>
+  <p>
+    A single-model, forward-inference-only engine for GPT-2-124M: first a pure-C fp32 forward pass with no
+    dependencies, then a CUDA port, then five stages of optimization applied one at a time. Every stage is
+    gated against a HuggingFace reference before it is timed, every number is checked against a roofline
+    ceiling measured on the actual GPU, and every stage that failed to pay for itself is still in the
+    repository, with the measurement that killed it.
+  </p>
+  <p>
+    There is no novelty claim. The claim is that the numbers are true, and that each one can be traced to
+    where it came from.
+  </p>
+</section>
+
+<section>
+  <h2>Where it lands</h2>
+  <p class="note">
+    Same GPU, same weights, same session, matched precision, medians (never best-of-N). Decode is true M=1
+    in all three engines. PyTorch prefill is measured on the transformer trunk only, because HF's
+    <code>model(ids)</code> also runs the LM head over all P positions and this engine does not.
+  </p>
+
+  <div class="tablewrap">
+  <table>
+    <thead>
+      <tr><th></th><th>this engine <span class="dim">(fp16)</span></th><th>llama.cpp <span class="dim">F16, CUDA</span></th><th>PyTorch <span class="dim">fp16 eager</span></th></tr>
+    </thead>
+    <tbody>
+      <tr><td>prefill @ P=128</td><td>27.548 ms</td><td class="best">2.732 ms</td><td>9.441 ms</td></tr>
+      <tr><td>prefill @ P=512</td><td>107.140 ms</td><td class="best">7.422 ms</td><td>9.395 ms</td></tr>
+      <tr><td>decode @ ctx=128</td><td>511.7 tok/s</td><td class="best">636.4 tok/s</td><td>107.4 tok/s</td></tr>
+      <tr><td>decode @ ctx=512</td><td>503.8 tok/s</td><td class="best">604.0 tok/s</td><td>107.9 tok/s</td></tr>
+      <tr><td>decode @ ctx=1023</td><td>448.6 tok/s</td><td class="best">586.3 tok/s</td><td>106.4 tok/s</td></tr>
+    </tbody>
+  </table>
+  </div>
+
+  <p>
+    <strong>Decode runs at 76–83% of llama.cpp and 4.2–4.8× faster than PyTorch eager. Prefill is 10–14×
+    slower than llama.cpp.</strong>
+  </p>
+
+  <p>
+    llama.cpp is faster, and the gap is worth explaining rather than burying. At P=512 the 14.44×
+    decomposes into two measured factors:
+  </p>
+
+<pre><code>14.44x  =  3.12x   tensor cores (WMMA)
+                   31.51 TFLOP/s measured tensor-GEMM ceiling
+                 / 10.10 TFLOP/s measured achievable CUDA-core GEMM ceiling
+        x  4.63x   GEMM maturity
+                   llama.cpp reaches 39.3% of its ceiling; this engine reaches 8.5% of its own</code></pre>
+
+  <p>
+    The first factor is a ceiling this engine cannot reach, because it uses no tensor cores — a scope
+    decision, not an oversight. It is the ratio of two independently microbenchmarked peaks. The second is
+    the distance between a textbook 16×16 shared-memory tile and a register-tiled, double-buffered,
+    vectorized GEMM; it is the residual, and it equals the ratio of how much of its own ceiling each engine
+    reaches. Together the two measured factors account for the full gap.
+  </p>
+  <p>
+    Fusion is not part of the answer. Attention is 5.3% of prefill after Stage 3b, and the ~123 kernel
+    launches in a prefill forward cost a small fraction of it, well under 1% — the per-op profile's
+    sum-of-parts lands within 0.7% of the uninstrumented forward, which bounds the per-kernel overhead
+    from above.
+  </p>
+  <p>
+    One number is worth reading twice: PyTorch eager's trunk prefill is <strong>9.441 ms at P=128 and
+    9.395 ms at P=512</strong> — identical, for four times the work. It is host-dispatch-bound at this model
+    size, which is why beating it on decode is table stakes and llama.cpp is the only baseline that says
+    anything.
+  </p>
+</section>
+
+<section>
+  <h2>The ladder</h2>
+  <p class="note">
+    Each stage changes one thing, re-passes the correctness gates, then is timed against the previous stage
+    back-to-back on the same thermal state. A stage that doesn't earn its keep is reverted.
+    <em>Decode before Stage 5 is a no-KV full recompute (M≫1, prefill-shaped) — a true M=1 decode does not
+    exist in this engine until the KV cache lands.</em>
+  </p>
+
+  <div class="tablewrap">
+  <table>
+    <thead><tr><th>Stage</th><th>What it adds</th><th>prefill @512</th><th>decode</th><th>note</th></tr></thead>
+    <tbody>
+      <tr><td>0</td><td>pure-C fp32 reference</td><td>3347 ms</td><td>~1.6 tok/s <span class="dim">(no-KV)</span></td><td>correctness oracle; CPU</td></tr>
+      <tr><td>1</td><td>naive CUDA fp16</td><td>840.0 ms</td><td>6.7 tok/s <span class="dim">(no-KV)</span></td><td>GPU baseline</td></tr>
+      <tr><td>2</td><td>tiled shared-memory GEMM</td><td>184.8 ms <b>(4.55×)</b></td><td>36.1 tok/s <span class="dim">(no-KV)</span></td><td>that "decode" win is GEMM reuse, not decode</td></tr>
+      <tr><td>3b</td><td>flash attention</td><td>107.3 ms <b>(1.72×)</b></td><td>46.7 tok/s <span class="dim">(no-KV)</span></td><td>attention 44.8% → 5.3% of prefill</td></tr>
+      <tr class="reverted"><td>3a</td><td>fused LayerNorm + matmul</td><td>—</td><td>—</td><td><b>reverted</b>: 2.9% slowdown, above noise</td></tr>
+      <tr><td>4</td><td>weight-only INT8</td><td>107.1 ms (1.00×)</td><td>—</td><td>both gates pass via kill-test; <b>zero speedup</b></td></tr>
+      <tr><td>5</td><td>KV cache + true M=1 GEMV</td><td>107.1 ms</td><td><b>511.7 tok/s</b> @ctx=128</td><td><b>14.7–98.3×</b> over no-KV recompute</td></tr>
+    </tbody>
+  </table>
+  </div>
+</section>
+
+<section>
+  <h2>What it taught</h2>
+
+  <h3>A kernel can be compute-bound on work it throws away</h3>
+  <p>
+    Stage 4's INT8 halves the weight bytes and buys exactly 1.00×, at every shape. Two falsifiable
+    predictions pinned down why. If the M=1 head GEMV were bandwidth-bound, halving its bytes gives ~2×
+    — measured 1.002×, rejected. If it were compute-bound on the tile's discarded rows, then M=1 and M=16
+    cost the same — measured 1.4351 ms vs 1.4346 ms, confirmed. The kernel runs at 860.6 GFLOP/s, 98.8% of
+    <em>its own</em> M=512 throughput, while pulling 23% of achieved bandwidth. Fewer bytes cannot help a
+    kernel that isn't waiting on bytes.
+  </p>
+
+  <h3>INT8's decode payoff is bounded by the quality gate, not the hardware</h3>
+  <p>
+    Even after Stage 5 gave it a KV cache and a proper GEMV, INT8 buys 1.02–1.16×. The tied output head is
+    31% of the weight bytes and must stay fp16 or the quality gate fails; the 48 quantizable block matmuls
+    are 1.2–4.7 MB each, small enough to sit on a per-kernel latency floor at M=1. The weight-side ceiling
+    on the whole-step speedup is 1.278×. The roofline's director map predicted "high" — the honest answer
+    is that it is high for the models that prediction was written about, and GPT-2-124M is too small. A
+    property of the model, not a failure of the engine.
+  </p>
+
+  <h3>At batch=1 a 124M model is launch-bound, not bandwidth-bound</h3>
+  <p>
+    Independently confirmed by the baseline. This engine's decode step reaches 127.4 GB/s (54.6% of copy
+    bandwidth); llama.cpp, with CUDA graphs and fused kernels, reaches 159.6 GB/s (68.4%). Both are far from
+    the bus. The roofline said decode was memory-bound; at this model size, what it actually waits on is
+    kernel launches. The decode gap runs 1.24× at ctx=128 — almost entirely that fixed per-step overhead —
+    rising to 1.31× at ctx=1023, where the fixed cost is still 73% of the gap and the remaining 27% is our
+    attention kernel scaling worse with context.
+  </p>
+
+  <h3>I checked my own denominators, and one was wrong</h3>
+  <p>
+    For several stages the CUDA-core compute ceiling was <em>derived from the clock</em>
+    (24 SM × 128 lanes × 2 × 2.61 GHz = 16.0 TFLOP/s) and then used as the denominator for "% of roofline".
+    Measuring it showed the achievable non-tensor GEMM is <strong>10.10 TFLOP/s</strong> — the assumption was
+    optimistic by 1.55×, and the ridge point it implied (≈69) was wrong; the real one is 43.3. Labelling a
+    number "derived, not measured" does not license using it as a measurement. The correction is in the git
+    history, along with a <code>clock64()</code> cross-check that reported 146% of the hardware's issue width
+    — impossible — and was discarded rather than published.
+  </p>
+</section>
+
+<section>
+  <h2>Demo</h2>
+  <!-- ============================================================
+       PLACEHOLDER — demo video. Replace this block with, e.g.:
+         <video controls playsinline poster="demo-poster.jpg" width="100%">
+           <source src="demo.mp4" type="video/mp4">
+         </video>
+       ============================================================ -->
+  <div class="placeholder">
+    <strong>Demo video slot</strong>
+    <span>Drop <code>docs/demo.mp4</code> here and replace this block with a &lt;video&gt; tag.</span>
+  </div>
+</section>
+
+<section>
+  <h2>Profiles</h2>
+  <!-- ============================================================
+       PLACEHOLDER — Nsight Compute screenshots.
+       Note: ncu is currently blocked on this machine (ERR_NVGPUCTRPERM);
+       unblocking needs an elevated registry write plus a reboot.
+       The mechanism evidence in BENCHMARKS.md does not depend on it:
+       ptxas -v stack-frame counts, the M-sweep, and achieved GFLOP/s vs
+       GB/s all stand on their own.
+       ============================================================ -->
+  <div class="placeholder">
+    <strong>Nsight Compute screenshots slot</strong>
+    <span>Optional. The kernel-mechanism claims are already backed by <code>ptxas -v</code>, the M-sweep, and
+    achieved GFLOP/s vs GB/s — Nsight would refine attribution, not change a verdict.</span>
+  </div>
+</section>
+
+<section>
+  <h2>Scope</h2>
+  <p>
+    Forward inference, batch=1, one model, one GPU, the ladder above. Not a framework, not a serving system,
+    not multi-GPU, not a llama.cpp clone. Tensor cores (WMMA), kernel fusion beyond Stage 3, and CUDA graph
+    capture are named in the roofline as the levers that would close the remaining gap — and are deliberately
+    not built, which is precisely why the gap can be attributed to them rather than hand-waved.
+  </p>
+  <p class="note">
+    BENCHMARKS.md also records an INT8-vs-llama.cpp-Q8_0 decode comparison, deliberately not headlined: the
+    schemes don't match. Ours is mixed precision — 48 block matmuls in INT8 with the tied head held in fp16
+    because the quality gate demands it — while Q8_0 is uniform int8 over every weight. Different byte
+    counts, different quality points, no Δppl measured for Q8_0. Context, not a result.
+  </p>
+  <p class="note">
+    Hardware: RTX 4060 Laptop (AD107, sm_89, 24 SM, 8 GB GDDR6, 105 W). Measured: 233.4 GB/s copy bandwidth,
+    248.9 GB/s read, 31.51 TFLOP/s tensor GEMM, 10.10 TFLOP/s achievable CUDA-core GEMM.
+  </p>
+</section>
+
+</main>
+
+<footer>
+  <p>Built from scratch in C and CUDA. Methodology in
+     <a href="https://github.com/phannhan/engine/blob/HEAD/DESIGN.md">DESIGN.md</a>,
+     <a href="https://github.com/phannhan/engine/blob/HEAD/ROOFLINE.md">ROOFLINE.md</a>,
+     <a href="https://github.com/phannhan/engine/blob/HEAD/QUALITY_GATES.md">QUALITY_GATES.md</a>,
+     <a href="https://github.com/phannhan/engine/blob/HEAD/BENCH_PROTOCOL.md">BENCH_PROTOCOL.md</a>.</p>
+</footer>
+
+</body>
+</html>
