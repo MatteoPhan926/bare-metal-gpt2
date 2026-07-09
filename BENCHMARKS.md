@@ -391,8 +391,10 @@ notes:            The ~5.4x "decode" is the M>>1 GEMM REUSE win diluted by the u
                   GEMMs run at M=ctx(34-161), the reuse regime. Hence it is prefill-shaped: a GEMM win
                   there is EXPECTED, NOT a director-map violation, and NOT a true (M=1) decode result.
                   ncu global-load sectors/request (to quantify the 1.18x M=1 coalescing residual;
-                  expect naive >> tiled) is PENDING GPU perf-counter access (ERR_NVGPUCTRPERM) -- it
-                  refines, does not change, the reuse conclusion; not a blocker (brain). Stage 2 =
+                  expect naive >> tiled) is now MEASURED -- see "ncu -- the two owed direct
+                  measurements" at the end of this file: 16.491 vs 1.887 sectors/request, 6.26% vs
+                  51.55% efficiency. Predicted sign and magnitude; it refined, and did not change,
+                  the reuse conclusion. Stage 2 =
                   ONE kernel swapped; correctness/quality preserved at the fp16 noise floor.
 ```
 
@@ -402,9 +404,9 @@ notes:            The ~5.4x "decode" is the M>>1 GEMM REUSE win diluted by the u
 by MEASUREMENT, not assumption (DESIGN.md §9.1): a per-op attribution of the Stage-2 forward
 (`bench/profile_forward.cu`) put attention at **44.80% of prefill@512**, the only op whose share GROWS
 with T. Everything else (tiled GEMM, LN, gelu, add, embed) is reused byte-for-byte from Stage 2, so
-every gate/timing delta localizes to attention. ncu remains blocked (ERR_NVGPUCTRPERM, needs an
-elevated registry write + reboot); the WHERE was established without it, and the mechanism is pinned by
-`ptxas -v` instead.*
+every gate/timing delta localizes to attention. The WHERE was established without ncu, and the mechanism
+is pinned by `ptxas -v`; ncu has since been unblocked and its counters corroborate (end of file), but no
+verdict here rests on it.*
 
 ```
 stage:            3b — flash attention  (cuda/kernels_fused.cu ; GPT2_BACKEND=flash ; attention-only swap)
@@ -483,10 +485,10 @@ regime check:     director map §5 row 3b = "traffic (no score matrix); helps at
                   again the M>>1 prefill-shaped regime (no KV cache until Stage 5), NOT a true M=1 decode.
 
 baseline:         PyTorch eager / llama.cpp deferred (still improving the from-scratch GPU baseline).
-notes:            ncu still blocked (ERR_NVGPUCTRPERM; needs elevated `reg add ... RmProfilingAdminOnly=0`
-                  + reboot). It was NOT needed to choose or validate this kernel: the target came from
+notes:            ncu was NOT needed to choose or validate this kernel: the target came from
                   event-based per-op attribution (sum-of-parts/whole = 1.005x) and the mechanism from
-                  ptxas -v. ncu would add sectors/request and dram__bytes -- refinement, not the verdict.
+                  ptxas -v. ncu has since been unblocked; its sectors/request and dram__bytes were the
+                  predicted refinement, not the verdict (see end of file).
 ```
 
 ### Stage 3a — fused LayerNorm+matmul · ❌ KILL-TESTED → **REVERTED** (measured slowdown) · 2026-07-09
@@ -1054,3 +1056,130 @@ notes:            The llama.cpp converter patch (conversion/gpt2.py bias-skip) i
                   Reproduce: tools/bench_pytorch.py ; llama.cpp build + llama-bench -o json (medians
                   recomputed from samples_ns, since llama-bench prints mean+-stddev, not median).
 ```
+
+---
+
+## ncu — the two owed direct measurements · ✅ **CLOSED** 2026-07-09
+
+GPU perf counters are now unblocked, so the two quantities that the ladder had only ever **inferred** are
+now **measured**. Nsight Compute 2024.3.0; NVIDIA GeForce RTX 4060 Laptop GPU (CC 8.9), whose 128-bit
+bus at 16 Gbps gives the 256 GB/s theoretical peak that every report below independently reproduces.
+
+**Both results corroborate the existing verdicts. Neither changes one.** The coalescing conclusion was
+already pinned by `ptxas -v` + the M-sweep, and the head's DRAM-bound status by achieved GB/s; ncu now
+supplies the counter that those arguments predicted. Nothing in `cuda/` was touched: the engine is
+byte-identical and still FROZEN (gates re-run below).
+
+### 1. Global-load coalescing at M=1 — `k_matmul` (naive) vs `k_matmul_tiled`
+
+`bench/profile_matmul.exe` (M=1, one launch each), report `ncu_profile_matmul.ncu-rep`.
+Sectors/request is derived as `l1tex__t_sectors_pipe_lsu_mem_global_op_ld.sum /
+l1tex__t_requests_pipe_lsu_mem_global_op_ld.sum`; efficiency is
+`smsp__sass_average_data_bytes_per_sector_mem_global_op_ld.ratio / 32`.
+
+```
+qkv shape  M=1  N=2304  K=768  (W = 3.54 MB, L2-resident)
+
+  metric                            k_matmul (naive)   k_matmul_tiled    ideal
+  ------------------------------------------------------------------------------
+  global-load sectors / request           16.491            1.887          2.0
+  global-load efficiency                   6.26%           51.55%          100%
+    (bytes per 32 B sector)              2.002 B          16.495 B         32 B
+  L1/TEX hit rate                         93.89%            4.81%           --
+  DRAM bytes read                        3.552 MB         3.549 MB       3.54 MB
+  Mem Pipes Busy                           4.40%           86.29%           --
+
+head shape M=1  N=50257 K=768   -- identical access-pattern signature:
+  sectors / request                       16.486            1.887
+  global-load efficiency                   6.26%           51.54%
+```
+
+**Read the 2.002 B/sector literally: exactly ONE fp16 per 32-byte sector.** The naive kernel's `W` stride
+is `K*2 = 1536 B`, far larger than a 32 B sector, so every lane's load lands in a sector of its own —
+the textbook fully-strided worst case, and the direct quantification of what `ptxas -v` implied. Tiling
+reclaims **8.74x fewer sectors per request** (16.491 → 1.887) and **8.24x more useful bytes per sector**.
+The signature is identical at both shapes, i.e. it is a property of the kernel's indexing, not of N.
+
+**Why 8.7x fewer sectors buys only the 1.18x M=1 residual — now visible in a counter.** The naive kernel's
+L1 hit rate is **93.89%**: L1 absorbs the excess sectors, so the two kernels pull *the same* DRAM traffic
+(3.552 vs 3.549 MB, both ≈ the 3.54 MB weight read once). At M=1 on an L2-resident weight, the strided
+access is an **L1-transaction defect, not a DRAM defect** — which is exactly why it is worth only a small
+constant factor, and why the M-sweep's 1.18x at M=1 grows to ~7x only once reuse (M>>1) enters. This
+*explains* the previously-inferred residual; it does not revise it.
+
+*(ncu's own durations under `--set full` replay — 109.34 / 100.32 us = 1.09x — are not a timing
+instrument: replay serializes and flushes caches. The 1.18x stands on the free-running interleaved
+M-sweep. ncu is cited here for counters only.)*
+
+### 2. Head GEMV DRAM traffic — the 243 GB/s is **confirmed directly**
+
+`profile_matmul` only ever launches the two Stage-2 kernels at the **qkv** shape, so it does *not* contain
+the head GEMV. The 243.2 GB/s figure belongs to the Stage-5 kernel `k_gemv_fp16` (`cuda/kvcache.cu:150`).
+Captured separately: `ncu -k k_gemv_fp16 --launch-skip 48 -c 1 --set full bench/profile_decode.exe 128`
+→ `ncu_head_gemv_sol.ncu-rep` (launch 48 = the head, after the 12x4 = 48 block GEMVs).
+
+```
+k_gemv_fp16  head  N=50257 K=768   grid (12565,1,1) x (128,1,1)
+
+  Duration                          317.28 us   <- matches the 0.3174 ms timed in [B] above
+  dram__bytes_read.sum               77.20 MB   <- = 50257*768*2 = 77.19 MB : W read EXACTLY ONCE
+  dram__bytes_read.sum.per_second   243.3 GB/s  <- vs 243.2 GB/s inferred  (0.04% apart)
+  dram__bytes_read ..pct_of_peak     95.15%     <- read-only utilization
+  DRAM throughput (SOL, read+write)  96.27%     <- ncu: ">80% of available memory performance"
+  Compute (SM) throughput            29.57%
+  global-load efficiency            100.00%     (sectors/request 3.333; __half2 vector loads)
+  SM 1.92 GHz / DRAM 7.99 GHz                   <- at boost: ncu did NOT depress clocks here
+```
+
+Three things this nails down, none of them new but all of them now *measured*:
+
+1. **The 243 GB/s was never L2 inflation.** 77.20 MB genuinely crossed DRAM — it exceeds the 32 MiB L2,
+   and the counter says so. The `[B]` per-layer 345–438 "GB/s" figures that *were* L2-inflated are
+   correctly excluded in the section above; this one is not.
+2. **The head is bandwidth-saturated (96.27% of DRAM peak, 29.57% compute).** ncu's own advisory reads
+   *"utilizing greater than 80.0% of available memory performance."* Halving its bytes *would* pay ~2x —
+   which is precisely why the head is the sensitive layer, and why Stage 4's quality kill-test forbidding
+   its quantization (KL 0.257, Δppl +0.549) is what caps INT8 decode at 1.02–1.16x. The ceiling is a
+   **quality** constraint sitting on a **bandwidth-ready** kernel.
+3. **`k_gemv_fp16` is perfectly coalesced (100.00% efficiency)** where `k_matmul_tiled` reaches 51.55%.
+   Implied DRAM peak (read GB/s ÷ read pct_of_peak) agrees across four independent kernels — head
+   243.3/0.9515, qkv-naive 32.486/0.12705, qkv-tiled 35.380/0.13842, head-naive 80.298/0.31400 =
+   **255.7, 255.7, 255.6, 255.7 GB/s** ≈ the 256 GB/s theoretical. (Divide by the *read-only* 95.15%,
+   not the SOL 96.27%, which folds in writes.)
+
+**Bonus corroboration of the M=1 GEMV-waste finding.** At the head shape and M=1, `k_matmul_tiled` is
+**2x SLOWER** than naive (ncu 1927.5 vs 962.7 us; free-running 1.4254 vs 0.8356 ms = 0.59x), with
+`Mem Pipes Busy` at 86.29%. The 16x16 tile computes 16 rows and masks 15 at the write, so at M=1 it burns
+16x the FLOPs — the direct measurement behind "INT8 bought exactly 1.00x because the tiled GEMM at M=1 is
+compute-bound on the rows it discards", and the reason Stage 5 ships a dedicated GEMV.
+
+### Engine unchanged
+
+```
+bench/correctness_cuda.exe   gate(a)=PASS  gate(b)=PASS  gate(c)=PASS  -> ALL PASS
+  [PRIMARY] max KL(ref||ours) = 1.953e-03  (threshold < 0.02)
+  [diag]    top-1 agreement   = 506/512 (98.83%)
+```
+No file under `cuda/` was modified for this section; profiling is read-only. Engine byte-identical, FROZEN.
+
+**Artifacts.** The `.ncu-rep` reports are gitignored (local only); the durable record is the text export
+in `docs/ncu/`. Reproduce from repo root (ncu on PATH, counters unblocked):
+
+```
+# 1. coalescing, M=1 qkv -> ncu_profile_matmul.ncu-rep     (also: ... profile_matmul.exe 50257 768)
+ncu --set full -o ncu_profile_matmul -f bench/profile_matmul.exe
+
+# 2. head GEMV, full Speed-of-Light -> ncu_head_gemv_sol.ncu-rep
+ncu -k k_gemv_fp16 --launch-skip 48 -c 1 --set full -o ncu_head_gemv_sol -f bench/profile_decode.exe 128
+
+# text exports (what docs/ncu/ contains)
+ncu --import ncu_head_gemv_sol.ncu-rep  --page details --section SpeedOfLight --section MemoryWorkloadAnalysis
+ncu --import ncu_profile_matmul.ncu-rep --page details --section MemoryWorkloadAnalysis
+
+# sectors/request is derived, not a stock metric:
+ncu --import <rep> --page raw --csv   # -> l1tex__t_sectors_... / l1tex__t_requests_...
+```
+
+`--launch-skip 48` selects the head: `profile_decode` issues the 12x4 = 48 block GEMVs first. A GUI
+Speed-of-Light capture (for `docs/index.html`) must come from `ncu-ui ncu_head_gemv_sol.ncu-rep` →
+Details → GPU Speed Of Light; the ncu **CLI cannot emit images**, only the tables reproduced above.

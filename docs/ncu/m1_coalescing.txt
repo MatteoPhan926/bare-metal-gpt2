@@ -1,0 +1,31 @@
+[7988] profile_matmul.exe@127.0.0.1
+  k_matmul(__half *, const __half *, const __half *, const __half *, int, int, int) (9, 1, 1)x(256, 1, 1), Context 1, Stream 7, Device 0, CC 8.9
+    Section: Memory Workload Analysis
+    --------------------------- ----------- ------------
+    Metric Name                 Metric Unit Metric Value
+    --------------------------- ----------- ------------
+    Memory Throughput               Gbyte/s        32.49
+    Mem Busy                              %        36.26
+    Max Bandwidth                         %        12.70
+    L1/TEX Hit Rate                       %        93.89
+    L2 Compression Success Rate           %            0
+    L2 Compression Ratio                               0
+    L2 Hit Rate                           %         1.98
+    Mem Pipes Busy                        %         4.40
+    --------------------------- ----------- ------------
+
+  k_matmul_tiled(__half *, const __half *, const __half *, const __half *, int, int, int) (144, 1, 1)x(16, 16, 1), Context 1, Stream 7, Device 0, CC 8.9
+    Section: Memory Workload Analysis
+    --------------------------- ----------- ------------
+    Metric Name                 Metric Unit Metric Value
+    --------------------------- ----------- ------------
+    Memory Throughput               Gbyte/s        35.38
+    Mem Busy                              %        47.63
+    Max Bandwidth                         %        86.29
+    L1/TEX Hit Rate                       %         4.81
+    L2 Compression Success Rate           %            0
+    L2 Compression Ratio                               0
+    L2 Hit Rate                           %         2.36
+    Mem Pipes Busy                        %        86.29
+    --------------------------- ----------- ------------
+

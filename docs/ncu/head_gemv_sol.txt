@@ -1,0 +1,36 @@
+[1276] profile_decode.exe@127.0.0.1
+  k_gemv_fp16(__half *, const __half *, const __half *, const __half *, int, int) (12565, 1, 1)x(128, 1, 1), Context 1, Stream 7, Device 0, CC 8.9
+    Section: GPU Speed Of Light Throughput
+    ----------------------- ----------- ------------
+    Metric Name             Metric Unit Metric Value
+    ----------------------- ----------- ------------
+    DRAM Frequency                  Ghz         7.99
+    SM Frequency                    Ghz         1.92
+    Elapsed Cycles                cycle      609,090
+    Memory Throughput                 %        96.27
+    DRAM Throughput                   %        96.27
+    Duration                         us       317.28
+    L1/TEX Cache Throughput           %        29.71
+    L2 Cache Throughput               %        27.13
+    SM Active Cycles              cycle   606,184.25
+    Compute (SM) Throughput           %        29.57
+    ----------------------- ----------- ------------
+
+    INF   The kernel is utilizing greater than 80.0% of the available compute or memory performance of the device. To   
+          further improve performance, work will likely need to be shifted from the most utilized to another unit.      
+          Start by analyzing DRAM in the Memory Workload Analysis section.                                              
+
+    Section: Memory Workload Analysis
+    --------------------------- ----------- ------------
+    Metric Name                 Metric Unit Metric Value
+    --------------------------- ----------- ------------
+    Memory Throughput               Gbyte/s       246.23
+    Mem Busy                              %        19.29
+    Max Bandwidth                         %        96.27
+    L1/TEX Hit Rate                       %        20.50
+    L2 Compression Success Rate           %            0
+    L2 Compression Ratio                               0
+    L2 Hit Rate                           %         2.57
+    Mem Pipes Busy                        %        29.57
+    --------------------------- ----------- ------------
+

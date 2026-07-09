@@ -187,18 +187,73 @@
 
 <section>
   <h2>Profiles</h2>
+  <p class="note">
+    Nsight Compute counters (2024.3.0; RTX 4060 Laptop, CC 8.9). These <b>corroborate</b> the mechanism claims that
+    <code>ptxas -v</code>, the M-sweep, and achieved GFLOP/s vs GB/s had already established — they do not
+    change a verdict. Raw text exports: <code>docs/ncu/</code>.
+  </p>
+
+  <h3>Global-load coalescing at M=1 — naive vs tiled GEMM</h3>
+  <p class="note">
+    <code>k_matmul</code> vs <code>k_matmul_tiled</code>, M=1, N=2304, K=768. Naive's <b>2.002 bytes per
+    32-byte sector</b> is exactly one fp16 per sector: the weight stride (1536 B) exceeds a sector, so every
+    lane lands in its own. Tiling reclaims 8.74× fewer sectors per request.
+  </p>
+  <div class="tablewrap">
+  <table>
+    <thead>
+      <tr><th></th><th><code>k_matmul</code> <span class="dim">naive</span></th><th><code>k_matmul_tiled</code></th><th>ideal</th></tr>
+    </thead>
+    <tbody>
+      <tr><td>global-load sectors / request</td><td>16.491</td><td class="best">1.887</td><td><span class="dim">2.0</span></td></tr>
+      <tr><td>global-load efficiency</td><td>6.26%</td><td class="best">51.55%</td><td><span class="dim">100%</span></td></tr>
+      <tr><td>bytes per 32 B sector</td><td>2.002 B</td><td class="best">16.495 B</td><td><span class="dim">32 B</span></td></tr>
+      <tr><td>L1/TEX hit rate</td><td>93.89%</td><td>4.81%</td><td><span class="dim">—</span></td></tr>
+      <tr><td>DRAM bytes read</td><td>3.552 MB</td><td>3.549 MB</td><td><span class="dim">3.54 MB</span></td></tr>
+    </tbody>
+  </table>
+  </div>
+  <p class="note">
+    Why 8.7× fewer sectors is worth only the 1.18× measured at M=1: naive's L1 hit rate is <b>93.89%</b>, so
+    both kernels pull the same DRAM traffic. On an L2-resident weight at M=1 this is an <b>L1-transaction
+    defect, not a DRAM defect</b> — the win only grows to ~7× once reuse (M≫1) enters.
+  </p>
+
+  <h3>Head GEMV is bandwidth-saturated</h3>
+  <p class="note">
+    <code>k_gemv_fp16</code>, the tied output head (N=50257, K=768). The 243 GB/s previously inferred from
+    achieved bandwidth is now read straight off the DRAM counter — and it was never L2 inflation: 77.20 MB
+    exceeds the 32 MiB L2.
+  </p>
+  <div class="tablewrap">
+  <table>
+    <tbody>
+      <tr><td>Duration</td><td>317.28 µs</td></tr>
+      <tr><td><code>dram__bytes_read.sum</code></td><td>77.20 MB <span class="dim">= 50257×768×2: W read exactly once</span></td></tr>
+      <tr><td>DRAM read throughput</td><td class="best">243.3 GB/s <span class="dim">(243.2 inferred — 0.04% apart)</span></td></tr>
+      <tr><td>DRAM throughput</td><td class="best">96.27% of peak</td></tr>
+      <tr><td>Compute (SM) throughput</td><td>29.57% of peak</td></tr>
+      <tr><td>global-load efficiency</td><td class="best">100.00%</td></tr>
+    </tbody>
+  </table>
+  </div>
+  <p class="note">
+    Halving the head's bytes <em>would</em> pay ~2×. It is kept fp16 anyway: quantizing it alone cost
+    KL 0.257 and Δppl +0.549. INT8 decode's 1.02–1.16× ceiling is therefore a <b>quality</b> constraint
+    sitting on a <b>bandwidth-ready</b> kernel — not a bandwidth limit.
+  </p>
+
   <!-- ============================================================
-       PLACEHOLDER — Nsight Compute screenshots.
-       Note: ncu is currently blocked on this machine (ERR_NVGPUCTRPERM);
-       unblocking needs an elevated registry write plus a reboot.
-       The mechanism evidence in BENCHMARKS.md does not depend on it:
-       ptxas -v stack-frame counts, the M-sweep, and achieved GFLOP/s vs
-       GB/s all stand on their own.
+       Optional: a genuine Nsight Compute GUI capture. ncu's CLI cannot
+       emit images, so this must be taken from ncu-ui by hand:
+         ncu-ui ncu_head_gemv_sol.ncu-rep      -> Details -> GPU Speed Of Light
+       Save as docs/ncu/head_gemv_sol.png and uncomment:
+       <img src="ncu/head_gemv_sol.png" alt="Nsight Compute Speed-of-Light, head GEMV: 96.27% DRAM throughput">
        ============================================================ -->
   <div class="placeholder">
-    <strong>Nsight Compute screenshots slot</strong>
-    <span>Optional. The kernel-mechanism claims are already backed by <code>ptxas -v</code>, the M-sweep, and
-    achieved GFLOP/s vs GB/s — Nsight would refine attribution, not change a verdict.</span>
+    <strong>Nsight Compute GUI capture slot</strong>
+    <span>Optional garnish. The Speed-of-Light numbers above are the same ones the GUI renders — exported
+    from <code>ncu_head_gemv_sol.ncu-rep</code> via the CLI, which cannot itself emit images.</span>
   </div>
 </section>
 
