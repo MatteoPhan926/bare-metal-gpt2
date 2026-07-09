@@ -24,7 +24,7 @@ NOT QUANTIZED (kept fp16; ~0.1 MB, and none of them is a matmul weight):
 SOURCE PRECISION: we quantize the fp16 *values* the engine actually runs (fp32 master -> .half() ->
 back to fp32), not the fp32 master. So Δppl measures quantization alone, with fp16 rounding held fixed.
 
---fp16-keep implements the PRE-REGISTERED kill-test (QUALITY_GATES §2 / CLAUDE.md §5): "exceeds bound
+--fp16-keep implements the PRE-REGISTERED kill-test (QUALITY_GATES §2 / DESIGN.md §5): "exceeds bound
 -> go per-channel (if not already), or keep sensitive layers (first block, final block, or
 high-activation-range layers) in fp16." It does NOT touch any threshold. A tensor named here is left
 un-quantized: the file carries a flag=0 for it, no int8 bytes are emitted, and the engine's

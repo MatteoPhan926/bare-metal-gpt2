@@ -1,4 +1,4 @@
-// ab_forward.cu — STAGE 3 KILL-TEST harness (CLAUDE.md §5, §9.3).
+// ab_forward.cu — STAGE 3 KILL-TEST harness (DESIGN.md §5, §9.3).
 //
 // Answers exactly one question per run: does backend B beat backend A by MORE THAN THE NOISE?
 // If not, the fusion is REVERTED — "should be faster" is not "is faster".
@@ -86,7 +86,7 @@ int main(int argc, char **argv) {
     printf("device: %s  sm_%d%d  %d SM\n", p.name, p.major, p.minor, p.multiProcessorCount);
     printf("method: interleaved A/B (same thermal state), sync-enforced timer, median + min-max,\n");
     printf("        iters=%d, sustained warmup to boost clocks. Never best-of-N.\n", iters);
-    printf("verdict rule (CLAUDE.md §5): no speedup above noise -> REVERT the fusion.\n");
+    printf("verdict rule (DESIGN.md §5): no speedup above noise -> REVERT the fusion.\n");
 
     GPT2Weights wcpu;
     if (gpt2_load_weights("weights/gpt2_124m_fp32.bin", &wcpu)) { fprintf(stderr, "weight load failed\n"); return 1; }

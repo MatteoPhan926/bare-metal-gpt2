@@ -20,4 +20,9 @@ nvcc -O3 -arch=sm_89 -I model -I cuda %SRC% bench\bench_decode.cu -o bench\bench
 if errorlevel 1 ( echo CUDA BUILD FAILED - bench_decode & exit /b 1 )
 nvcc -O3 -arch=sm_89 -I model -I cuda %SRC% bench\profile_decode.cu -o bench\profile_decode.exe
 if errorlevel 1 ( echo CUDA BUILD FAILED - profile_decode & exit /b 1 )
+
+REM microbench is standalone (no model sources) and is the ONLY target needing cuBLAS: it uses
+REM cublasGemmEx as the measurement instrument for the achievable compute ceilings (ROOFLINE 6/6b).
+nvcc -O3 -arch=sm_89 -I model -I cuda bench\microbench.cu -o bench\microbench.exe -lcublas
+if errorlevel 1 ( echo CUDA BUILD FAILED - microbench & exit /b 1 )
 echo CUDA BUILD OK

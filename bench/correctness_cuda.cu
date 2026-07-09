@@ -265,7 +265,7 @@ int main(int argc, char **argv) {
         const double C_COPY=233.4e3/MB, C_READ=248.9e3/MB, C_THEO=256.0e3/MB;
         printf("  bug-line check (%.1f MB streamed): decode %.1f tok/s vs ceilings [copy %.0f / read %.0f / theo %.0f]\n",
                MB,tps,C_COPY,C_READ,C_THEO);
-        if(tps>C_THEO)      printf("  *** ABOVE THEORETICAL CEILING -> MEASUREMENT BUG (likely missing sync). STOP-AND-REPORT. ***\n");
+        if(tps>C_THEO)      printf("  *** ABOVE THEORETICAL CEILING -> MEASUREMENT BUG (likely missing sync). Fix it; do not publish it. ***\n");
         else if(tps>C_READ) printf("  *** above achieved-read BW ceiling -> suspicious; investigate. ***\n");
         else                printf("  OK: below the achieved-BW ceiling (as expected for this backend).\n");
         free(gids);

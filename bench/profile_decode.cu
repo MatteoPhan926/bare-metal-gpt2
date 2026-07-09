@@ -1,4 +1,4 @@
-// profile_decode.cu — STAGE 5 measure-before-optimize (CLAUDE.md §9.1).
+// profile_decode.cu — STAGE 5 measure-before-optimize (DESIGN.md §9.1).
 //
 // The A/B said INT8 gives only ~1.1x at true M=1, NOT above noise -- even though it streams 162.1 MB
 // against fp16's 248.9 MB (1.54x fewer weight bytes). Either (i) the GEMV is not weight-traffic-bound,
@@ -149,8 +149,15 @@ int main(int argc,char**argv){
         printf("  [validity] whole step (uninstrumented) = %.4f ms ; SUM/whole = %.3fx  (%s)\n",
                wmed, sum/wmed, sum/wmed<1.35? "serialization overhead only -> shares trustworthy"
                                             : "** large serialization -> shares distorted **");
+        // Launch inventory of gpt2_decode_step_cuda (cuda/kvcache.cu):
+        //   embed_one (1)
+        //   x NL layers, 11 each: ln1, gemv qkv, kv_append, attn_decode, gemv attnproj, add,
+        //                         ln2, gemv fc, gelu, gemv ffnproj, add
+        //   final ln_f (1) + tied-head gemv (1)
+        // [CORRECTED 2026-07-10] this printed `1 + NL*11 + 1` = 134, which counted only ONE of the two
+        // trailing kernels. The true count is 1 + 12*11 + 2 = 135.
         printf("  [launch]   %d kernel launches per step ; whole-step - SUM(GEMV+attn+append) leaves the rest\n\n",
-               1 + NL*11 + 1);
+               1 + NL*11 + 2);
     }
 
     // ---------------- [B] isolated GEMVs: does the byte halving appear? ----------------
@@ -220,7 +227,7 @@ int main(int argc,char**argv){
         printf("    fp16 step >= blocks %.4f + head %.4f = %.4f ms ;  INT8 step >= %.4f + %.4f = %.4f ms\n",
                ma, head, ma+head, mb, head, mb+head);
         printf("    => weight-side ceiling on the speedup = %.3fx, BEFORE attention/LN/add/gelu and the\n"
-               "       134-launch overhead dilute it further. THAT is why row 4 cannot reach ~1.5x here.\n\n",
+               "       135-launch overhead dilute it further. THAT is why row 4 cannot reach ~1.5x here.\n\n",
                (ma+head)/(mb+head));
     }
 

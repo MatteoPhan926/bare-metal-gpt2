@@ -3,7 +3,7 @@
 //   (3b) flash-style causal attention — online softmax, NO materialized [T,T] score matrix.
 //   (3a) fused LayerNorm+matmul                                        [next; kill-tested separately]
 //
-// WHY 3b FIRST (measured, not assumed — CLAUDE.md §9.1, bench/profile_forward.cu):
+// WHY 3b FIRST (measured, not assumed — DESIGN.md §9.1, bench/profile_forward.cu):
 //   prefill@512, tiled backend, per-op medians (N=30), sum-of-parts/whole = 1.005x (validated split):
 //     attention 83.15 ms = 44.80% of the forward   <-- the single largest op, and the only one whose
 //     matmul_ffnproj 17.96% | matmul_fc 17.84% |       share GROWS with T (23.51% @128 -> 44.80% @512):

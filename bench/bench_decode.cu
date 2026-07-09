@@ -113,7 +113,7 @@ int main(int argc,char**argv){
       cudaEventDestroy(s0); cudaEventDestroy(s1); }
 
     // `batch` timed calls per sample, then divide -> the reported number is still ms PER TOKEN.
-    // A 2 ms decode step launches 134 kernels, so a single Windows host hiccup inflates one sample by
+    // A 2 ms decode step launches 135 kernels, so a single Windows host hiccup inflates one sample by
     // ~30% and destroys min-max disjointness. Batching amortises host jitter across `batch` steps; it
     // does NOT change what is measured (BENCH_PROTOCOL §6: "spread wide -> increase N, don't pick the
     // good one"). batch=1 for the slow no-KV side, where a step is 110-221 ms and jitter is irrelevant.

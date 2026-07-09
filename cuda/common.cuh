@@ -3,7 +3,7 @@
 // The timing helper exists to make BENCH_PROTOCOL §7 bug #1 (timing an async launch instead of
 // execution) hard to write by accident: it syncs the device BEFORE the timed region and
 // cudaEventSynchronize's AFTER every iteration, so the elapsed time is real GPU execution.
-// (The #1 source of fake CUDA speedups — CLAUDE.md build traps.)
+// (The #1 source of fake CUDA speedups — see BENCH_PROTOCOL.md §7, the measurement-bug checklist.)
 #ifndef GPT2_COMMON_CUH
 #define GPT2_COMMON_CUH
 

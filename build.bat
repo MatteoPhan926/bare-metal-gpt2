@@ -1,5 +1,7 @@
 @echo off
-REM build.bat — STAGE 0 (pure-C fp32) build via MSVC x64 under vcvars64.
+REM build.bat - STAGE 0 (pure-C fp32) build via MSVC x64 under vcvars64.
+REM Keep this file pure ASCII: cmd mis-parses a non-ASCII byte in a REM line and prints a spurious
+REM "'M' is not recognized as an internal or external command" before the build proceeds.
 REM Mirrors the recorded env: MSVC 14.44 (VS2022 BuildTools). cl /openmp = threads only (OpenMP 2.0);
 REM the numerics stay /fp:precise (IEEE, no reassociation) so the 1e-4 gate isn't fought by fast-math.
 setlocal

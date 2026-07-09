@@ -1,0 +1,119 @@
+Nsight Compute RAW COUNTERS — the numbers BENCHMARKS.md and docs/index.html quote
+Nsight Compute 2024.3.0 · NVIDIA GeForce RTX 4060 Laptop GPU (CC 8.9) · captured 2026-07-09
+
+WHY THIS FILE EXISTS. The .ncu-rep binary reports are gitignored (local only), and the section
+exports in this directory (head_gemv_sol.txt, m1_coalescing.txt) come from `--page details`, which
+does NOT print dram__bytes_read.sum, its per_second / pct_of_peak, or the SASS bytes-per-sector
+ratio. Those four counters back three published figures — 77.20 MB, 243.3 GB/s, 100.00% global-load
+efficiency — so without this file a reader who clones the repo cannot verify them. Values below are
+transcribed verbatim from `ncu --import <rep> --page raw --csv` (that page emits one very wide row
+per kernel; it is transposed here, nothing else is changed).
+
+==============================================================================================
+CAPTURE 1 - k_gemv_fp16, tied head (N=50257, K=768), Stage 5
+  $ ncu --import ncu_head_gemv_sol.ncu-rep --page raw --csv
+==============================================================================================
+
+  k_gemv_fp16  grid (12565, 1, 1) x (128, 1, 1)
+  metric                                                                  value  unit
+  ------------------------------------------------------------------------------------
+  gpu__time_duration.sum                                             317.280000  us
+  dram__bytes_read.sum                                                77.203968  Mbyte
+  dram__bytes_read.sum.per_second                                    243.330711  Gbyte/s
+  dram__bytes_read.sum.pct_of_peak_sustained_elapsed                  95.137417  %
+  smsp__sass_average_data_bytes_per_sector_mem_global_op_ld.ratio      32.000000  byte/sector
+  l1tex__t_sectors_pipe_lsu_mem_global_op_ld.sum                 3015456.000000  sector
+  l1tex__t_requests_pipe_lsu_mem_global_op_ld.sum                       904,644
+  l1tex__t_sector_hit_rate.pct                                        20.502637  %
+
+==============================================================================================
+CAPTURE 2 - k_matmul (naive) vs k_matmul_tiled, M=1 qkv (N=2304, K=768), Stage 2
+  $ ncu --import ncu_profile_matmul.ncu-rep --page raw --csv
+==============================================================================================
+
+  k_matmul  grid (9, 1, 1) x (256, 1, 1)
+  metric                                                                  value  unit
+  ------------------------------------------------------------------------------------
+  gpu__time_duration.sum                                             109.344000  us
+  dram__bytes_read.sum                                                 3.552128  Mbyte
+  dram__bytes_read.sum.per_second                                     32.485806  Gbyte/s
+  dram__bytes_read.sum.pct_of_peak_sustained_elapsed                  12.704640  %
+  smsp__sass_average_data_bytes_per_sector_mem_global_op_ld.ratio       2.002367  byte/sector
+  l1tex__t_sectors_pipe_lsu_mem_global_op_ld.sum                 1824917.000000  sector
+  l1tex__t_requests_pipe_lsu_mem_global_op_ld.sum                       110,664
+  l1tex__t_sector_hit_rate.pct                                        93.891443  %
+
+  k_matmul_tiled  grid (144, 1, 1) x (16, 16, 1)
+  metric                                                                  value  unit
+  ------------------------------------------------------------------------------------
+  gpu__time_duration.sum                                             100.320000  us
+  dram__bytes_read.sum                                                 3.549312  Mbyte
+  dram__bytes_read.sum.per_second                                     35.379904  Gbyte/s
+  dram__bytes_read.sum.pct_of_peak_sustained_elapsed                  13.842352  %
+  smsp__sass_average_data_bytes_per_sector_mem_global_op_ld.ratio      16.494637  byte/sector
+  l1tex__t_sectors_pipe_lsu_mem_global_op_ld.sum                  117644.000000  sector
+  l1tex__t_requests_pipe_lsu_mem_global_op_ld.sum                        62,352
+  l1tex__t_sector_hit_rate.pct                                         4.809993  %
+
+==============================================================================================
+CAPTURE 3 - k_matmul (naive) vs k_matmul_tiled, M=1 head (N=50257, K=768)
+  $ ncu --import ncu_profile_head.ncu-rep --page raw --csv
+  (reproduce the report with: ncu --set full -o ncu_profile_head -f bench/profile_matmul.exe 50257 768)
+==============================================================================================
+
+  k_matmul  grid (197, 1, 1) x (256, 1, 1)
+  metric                                                                  value  unit
+  ------------------------------------------------------------------------------------
+  gpu__time_duration.sum                                               0.962720  ms
+  dram__bytes_read.sum                                                77.304192  Mbyte
+  dram__bytes_read.sum.per_second                                     80.297690  Gbyte/s
+  dram__bytes_read.sum.pct_of_peak_sustained_elapsed                  31.396549  %
+  smsp__sass_average_data_bytes_per_sector_mem_global_op_ld.ratio       2.002367  byte/sector
+  l1tex__t_sectors_pipe_lsu_mem_global_op_ld.sum                39807046.000000  sector
+  l1tex__t_requests_pipe_lsu_mem_global_op_ld.sum                     2,414,627
+  l1tex__t_sector_hit_rate.pct                                        89.400341  %
+
+  k_matmul_tiled  grid (3142, 1, 1) x (16, 16, 1)
+  metric                                                                  value  unit
+  ------------------------------------------------------------------------------------
+  gpu__time_duration.sum                                               1.927520  ms
+  dram__bytes_read.sum                                                77.303168  Mbyte
+  dram__bytes_read.sum.per_second                                     40.104989  Gbyte/s
+  dram__bytes_read.sum.pct_of_peak_sustained_elapsed                  15.680068  %
+  smsp__sass_average_data_bytes_per_sector_mem_global_op_ld.ratio      16.492389  byte/sector
+  l1tex__t_sectors_pipe_lsu_mem_global_op_ld.sum                 2566294.000000  sector
+  l1tex__t_requests_pipe_lsu_mem_global_op_ld.sum                     1,360,150
+  l1tex__t_sector_hit_rate.pct                                         5.096332  %
+
+
+==============================================================================================
+WHAT THE PUBLISHED FIGURES ARE, DERIVED FROM THE ABOVE
+==============================================================================================
+
+  sectors / request  = l1tex__t_sectors_pipe_lsu_mem_global_op_ld.sum
+                     / l1tex__t_requests_pipe_lsu_mem_global_op_ld.sum
+  global-load eff.   = smsp__sass_average_data_bytes_per_sector_mem_global_op_ld.ratio / 32
+
+                                  sec/req   bytes/sector      eff     DRAM read      duration
+  k_gemv_fp16   head                3.333     32.000 B    100.00%     77.20 MB      317.28 us
+  k_matmul      qkv  (naive)       16.491      2.002 B      6.26%      3.55 MB      109.34 us
+  k_matmul_tiled qkv                1.887     16.495 B     51.55%      3.55 MB      100.32 us
+  k_matmul      head (naive)       16.487      2.002 B      6.26%     77.30 MB      962.72 us
+  k_matmul_tiled head               1.887     16.492 B     51.54%     77.30 MB     1927.52 us
+
+  Naive's 2.002 bytes per 32-byte sector is EXACTLY ONE fp16 per sector: its W stride is K*2 = 1536 B,
+  far wider than a sector, so every lane's load lands in a sector of its own. k_gemv_fp16 uses __half2
+  vector loads (32 lanes x 4 B = 128 B = 4 sectors/request ideal) and hits 100%.
+
+  THE HEAD SHAPE IS WHERE TILING LOSES. Both head kernels read the same 77.30 MB from DRAM, yet the
+  tiled one takes 2.00x as long (1927.52 vs 962.72 us): the 16x16 tile computes 16 output rows and
+  masks 15 at the write, burning 16x the FLOPs. Coalescing wins the transaction argument (1.887 vs
+  16.487 sectors/request) and still loses the wall clock. This is why Stage 5 ships a dedicated M=1
+  GEMV, and why the tied head DRAGS the naive->tiled M=1 decode ratio down rather than amplifying it.
+
+  IMPLIED DRAM PEAK, five independent kernels (read GB/s / read pct_of_peak):
+    243.330711 / 0.95137417 = 255.8      80.297690 / 0.31396549 = 255.8
+     32.485806 / 0.12704640 = 255.7      40.104989 / 0.15680068 = 255.8
+     35.379904 / 0.13842352 = 255.6
+  ≈ the 256 GB/s theoretical peak (128-bit bus @ 16 Gbps). Divide by the READ-ONLY pct_of_peak, not by
+  the Speed-of-Light "DRAM Throughput" (96.27% for the head GEMV), which folds in writes.

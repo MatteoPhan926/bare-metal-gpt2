@@ -10,11 +10,12 @@ Regeneration commands are in that BENCHMARKS.md section.
 |---|---|
 | `head_gemv_sol.txt` | `k_gemv_fp16` head GEMV (N=50257, K=768) — GPU Speed Of Light + Memory Workload Analysis |
 | `m1_coalescing.txt` | `k_matmul` (naive) vs `k_matmul_tiled` at M=1, N=2304, K=768 — Memory Workload Analysis |
+| `raw_counters.txt` | **the raw counters behind every published figure** — `dram__bytes_read.sum` (77.20 MB), its per-second (243.3 GB/s) and pct-of-peak (95.14%), and the SASS bytes-per-sector ratio. `--page details` does not print these, so without this file the three headline ncu numbers on the project page would not be verifiable from a clone. |
 
 ## Derived: global-load sectors per request
 
 Sectors/request is **not** a stock ncu section metric on this version; it is derived from the raw counters
-(`ncu --import <rep> --page raw --csv`):
+(`ncu --import <rep> --page raw --csv`; full transcription in `raw_counters.txt`):
 
 ```
 sectors/request    = l1tex__t_sectors_pipe_lsu_mem_global_op_ld.sum

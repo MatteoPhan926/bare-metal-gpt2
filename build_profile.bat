@@ -1,5 +1,6 @@
 @echo off
-REM build_profile.bat — STAGE 2 diagnostic build: isolated naive+tiled matmul GEMV profiling harness.
+REM build_profile.bat - STAGE 2 diagnostic build: isolated naive+tiled matmul GEMV profiling harness.
+REM Builds bench\profile_matmul.exe, which the BENCHMARKS.md ncu section drives. Keep pure ASCII (see build.bat).
 setlocal
 call "C:\Program Files (x86)\Microsoft Visual Studio\2022\BuildTools\VC\Auxiliary\Build\vcvars64.bat" >nul 2>&1
 if errorlevel 1 ( echo vcvars64 failed & exit /b 1 )

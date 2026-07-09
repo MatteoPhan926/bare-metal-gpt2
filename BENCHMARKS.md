@@ -60,9 +60,21 @@ early decode column is labelled, not celebrated.
 | 4 | weight-only INT8 | 107.1 ms (1.00×) | — | both gates pass via the pre-registered kill-test; **zero speedup, honestly** |
 | 5 | KV cache + true M=1 GEMV | 107.1 ms | **511.7 tok/s** @ctx=128 | **14.7–98.3×** over no-KV recompute |
 
-Stage 5 fp16 decode reaches 511.7 tok/s = **56% of the 920 tok/s copy-bandwidth ceiling** at ctx=128 —
-inside the band the roofline calls believable, and confirmed independently by llama.cpp landing at 68%
-of the same ceiling with CUDA graphs and fused kernels.
+Stage 5 fp16 decode reaches 511.7 tok/s at ctx=128. Against the ceiling derived from the bytes it actually
+streams (weights 248.9 MB + KV 4.7 MB → **920 tok/s** at the measured 233.4 GB/s copy BW) that is **55.6%** —
+inside the 0.55–0.85 band ROOFLINE §7 calls believable.
+
+The independent confirmation is a **same-basis bandwidth** comparison, not a shared tok/s ceiling: measured
+over weight bytes alone, this engine achieves **127.4 GB/s (54.6% of copy BW)** and llama.cpp — with CUDA
+graphs and fused kernels — achieves **159.6 GB/s (68.4%)**. Both are far from the bus, which is the actual
+finding: at batch=1 this model is launch-bound, not byte-bound.
+
+> **`[CORRECTED 2026-07-10]`** This paragraph used to read "56% of the 920 tok/s ceiling … confirmed by
+> llama.cpp landing at **68% of the same ceiling**." It was **not the same ceiling**: 56% is 511.7/920
+> (weights **+ KV**) while 68% is 636.4/938 (weights only). The two engines stream different byte counts per
+> token (248.9 vs 250.7 MB of weights), so **no single tok/s ceiling is shared between them** and the
+> like-for-like statement is the bandwidth pair above, which README has always used. Same-basis, the numbers
+> are 54.6% vs 68.4%. No measured value changed.
 
 ---
 
@@ -85,12 +97,12 @@ a stage; this pass fixes what the DOCS say, not what the engine did. Fixed in pl
 | 9 | DESIGN.md §3 G1/G2/G3/G7 | 4 open `[VERIFY]` tags; "SmolLM **or** GPT-2"; "~270 MB → ~950 tok/s" placeholder | model LOCKED = GPT-2-124M (124,439,808 params → 248.9 MB); tags discharged to `[VERIFIED]` with the measured values |
 | 10 | DESIGN.md §5 | 4 open `[CONJECTURE]`s, 3 of them already kill-tested | outcome pointers added (bets and bounds unchanged) |
 | 11 | BENCH_PROTOCOL §3 | "no-KV decode" — too weak, twice near-misread | sharpened to **"no-KV recompute-decode (M≫1)"** with the consequence spelled out |
-| **12** | **ROOFLINE §1/§4 + CLAUDE §3 + Stage 3b/4 blocks** | **the CUDA-core peak 16.0 TF was DERIVED from clock** (G2: "microbench, do not assume") and ridge ≈69 rested on it | **MEASURED** (Phase −1b / ROOFLINE §6b): FMA pipe **15.64 TF**, achievable GEMM **10.10 TF**. **16.0 was optimistic by 1.55×; the governing ridge is 43, not 69.** Prefill efficiency restated (S3b/S4 @512 = **8.5%**, not 5.35%). No kernel re-run; no measured GFLOP/s changed. Caught before Stage 5; a hard blocker until measured. |
+| **12** | **ROOFLINE §1/§4 + DESIGN §3 + Stage 3b/4 blocks** | **the CUDA-core peak 16.0 TF was DERIVED from clock** (G2: "microbench, do not assume") and ridge ≈69 rested on it | **MEASURED** (Phase −1b / ROOFLINE §6b): FMA pipe **15.64 TF**, achievable GEMM **10.10 TF**. **16.0 was optimistic by 1.55×; the governing ridge is 43, not 69.** Prefill efficiency restated (S3b/S4 @512 = **8.5%**, not 5.35%). No kernel re-run; no measured GFLOP/s changed. Caught before Stage 5; a hard blocker until measured. |
 
 > **Item 12 note — the doc pass introduced the defect it later caught.** The 16.0 TF figure entered the docs
 > *in this very pass* (item 2), correctly labelled "derived from clock (not microbenched)", and was then used
-> as a denominator two lines later. Labelling an assumption does not license using it as a measurement. The
-> brain caught it before Stage 5; it is now measured, and the label removed by making it true.
+> as a denominator two lines later. Labelling an assumption does not license using it as a measurement. It
+> was caught before Stage 5; it is now measured, and the label removed by making it true.
 
 **Confirmations requested with this pass:**
 - **Gate-(b) t=28 `|top-1 logit| = 135` is MEASURED, not carried over.** `bench/correctness_cuda.cu:185`
@@ -139,15 +151,26 @@ environment:      sm_clk=2610 MHz (GEMM, fp32-acc)  mem_clk=8000 MHz  power=66 W
 
 achieved copy BW (2N r+w):   233.4 GB/s   median  (230.7–234.6)   = 91.2% of 256 theo   [decode denom, conservative]
 achieved read BW (1N):       248.9 GB/s   median  (246.4–249.7)   = 97.2% of 256 theo   [decode denom, upper bracket]
-FP16 GEMM peak fp32-accum:    31.51 TFLOP/s median (31.41–31.56 @8192³)                 [PREFILL denom]
+FP16 GEMM peak fp32-accum:    31.51 TFLOP/s median (31.41–31.56 @8192³)                 [TENSOR-core peak]
 FP16 GEMM peak fp16-accum:    60.98 TFLOP/s median (60.73–61.34 @8192³)  = 1.94×         [headroom only; not model numerics]
-ridge point (31.5/233):       135 FLOP/byte   (≈127 vs read BW)
+ridge point (31.5/233):       135 FLOP/byte   (≈127 vs read BW)                          [the TENSOR-core ridge]
 
 sanity:           all BW < 256 theoretical (no L2 artifact); 1.94× ratio = known consumer-Ada
                   fp32-accum half-rate; fp32-accum median reproduced identically across 2 runs.
 verdict:          denominators now MEASURED (were provisional). Decode is memory-bound by ~65–135×
                   (ridge 135 vs decode AI ~1–2 FLOP/byte) — regime verdicts in ROOFLINE hold.
 ```
+
+> **`[doc pass 2026-07-10]`** Two labels in the block above were written before Phase −1b existed and are
+> **superseded by it** (the same correction Stages 1/2/3b already carry inline). `31.51 TFLOP/s` was tagged
+> `[PREFILL denom]`; it is **not** the prefill denominator for anything this engine ships, because no shipped
+> kernel uses tensor cores. It is the **hard bug line** (nothing on this GPU may exceed it) and a statement of
+> the WMMA headroom left on the table. The **prefill denominator is the measured achievable CUDA-core GEMM,
+> 10.10 TFLOP/s** (Phase −1b / ROOFLINE §6b), and the **governing ridge is 43.3**, not the 135 quoted here —
+> 135 is the ridge a *future WMMA kernel* would face. Likewise the verdict line's "~65–135×" is stated against
+> the tensor ridge; against the governing 43.3 the same decode AI (1–2 FLOP/byte) is **~22–43×** to the left.
+> **No measured value changes, and every regime verdict is unaffected** — decode sits far left of all three
+> ridges under any reading. The numbers are kept as originally recorded; only the labels were wrong.
 
 **Recomputed decode ceilings (measured BW):** fp16 ~941 tok/s (copy) / ~1004 (read); INT8 ~1883/2008;
 INT4 ~3765/4015. Theoretical-256 column stays the **bug line** (a decode number above it = a bug).
@@ -396,6 +419,9 @@ notes:            The ~5.4x "decode" is the M>>1 GEMM REUSE win diluted by the u
                   51.55% efficiency. Predicted sign and magnitude; it refined, and did not change,
                   the reuse conclusion. Stage 2 =
                   ONE kernel swapped; correctness/quality preserved at the fp16 noise floor.
+                  [2026-07-10] The 1.18x measured here is at the qkv shape and does NOT generalise:
+                  the M=1 coalescing win spans 0.50x-2.96x across the five weight shapes, and at the
+                  TIED HEAD (N=50257) the 16x16 tile is 2x SLOWER than naive. See "Pre-public audit" §4.
 ```
 
 ### Stage 3b — flash-style attention (online softmax, no score matrix) · ✅ VALIDATED 2026-07-09
@@ -825,7 +851,7 @@ CORRECTNESS (bench/kv_gate.cu ; a KV cache is a prime silent-bug site, so FOUR c
             (== Stage 4's prefill KL 1.495e-2: the decode path adds no quantization error)
 
 SPEED (bench/bench_decode.cu ; INTERLEAVED A/B ; sync-enforced ; median [min-max] ; iters=50 ;
-       samples BATCHED over 4-16 steps then divided -- a 2 ms / 134-launch step is sensitive to host
+       samples BATCHED over 4-16 steps then divided -- a 2 ms / 135-launch step is sensitive to host
        jitter; batching amortises it and does NOT change what is measured (BENCH_PROTOCOL §6: widen N,
        never pick the good one). Both sides answer "what does ONE MORE token at ctx cost?":
          no-KV = a full forward over ctx+1 tokens (literally what the pre-Stage-5 harness did per token)
@@ -845,9 +871,25 @@ SPEED (bench/bench_decode.cu ; INTERLEAVED A/B ; sync-enforced ; median [min-max
       ctx=512 : naive 8.3009 ms (120.5 tok/s) -> tiled 6.0198 ms (166.1 tok/s)  1.379x  disjoint
       VERDICT: row 2's "decode payoff LOW" is **CONFIRMED**. 1.38-1.40x at true M=1 against **5.57x at
       prefill@128** -- the tiling-for-REUSE win is absent, as the roofline said it must be (there is only
-      one row to reuse). The residual 1.4x is COALESCING (tiled reads W contiguously, naive strided),
-      matching Stage 2's isolated M=1 prediction of 1.18x, amplified here by the tied head's 50257 rows.
+      one row to reuse). What remains is COALESCING (tiled reads W contiguously, naive strided).
       Not literally "flat" -- but the prediction was "low", and low is what it is.
+
+      *** [MECHANISM CORRECTED 2026-07-10 -- pre-public audit, end of this file] ***
+      This block originally read "...matching Stage 2's isolated M=1 prediction of 1.18x, amplified here
+      by the tied head's 50257 rows." **That is backwards**, and THIS FILE's own ncu section refutes it:
+      at the head shape and M=1, k_matmul_tiled is 2.00x SLOWER than naive (962.7 -> 1927.5 us, same
+      77.3 MB of DRAM read). The tied head is the BRAKE on the tiled side, not the amplifier.
+      Decomposing the ctx=128 step with the head timings from that same section (naive 0.8356 ms,
+      tiled 1.4254 ms free-running):
+          48 block matmuls + rest : naive 7.2138 -> tiled 4.3395 ms  = 1.662x  <- the coalescing win
+          tied head, M=1          : naive 0.8356 -> tiled 1.4254 ms  = 0.586x  <- the 16x16 tile's waste
+          whole step              : naive 8.0494 -> tiled 5.7649 ms  = 1.396x
+      The head costs the tiled side +0.5898 ms and drags 1.66x DOWN to 1.40x. The coalescing win is
+      strongly shape-dependent (Stage 2 isolated 1.18x at the qkv shape; the audit's per-shape M=1 sweep
+      spans 0.50x to 2.96x), and on the largest tensor in the model the tile's 15-of-16 discarded rows
+      swamp coalescing entirely. **The VERDICT is unchanged** -- 1.40x is low, and low is what row 2
+      predicted. The corrected mechanism is the SAME tile-waste finding that forced Stage 5 to ship a
+      dedicated M=1 GEMV (see (2b) immediately below, and Stage 4's head M=1 == head M=16 result).
 
   (2b) the GEMV kernel itself: tiled M=1 matmul vs TRUE M=1 GEMV (both KV, both fp16)
       ctx=128 : tiled 5.7601 ms (173.6 tok/s) -> gemv 2.0865 ms (479.3 tok/s)   2.761x  disjoint
@@ -863,7 +905,7 @@ SPEED (bench/bench_decode.cu ; INTERLEAVED A/B ; sync-enforced ; median [min-max
 
 MEASURE-BEFORE-OPTIMIZE (§9.1 ; bench/profile_decode.cu):
   [A] per-op attribution of one decode step: SUM/whole = 1.51x -> the harness's own validity guard says
-      **the per-op shares are DISTORTED** (134 tiny kernels; each per-op sync adds ~7.7 us). They are NOT
+      **the per-op shares are DISTORTED** (135 tiny kernels; each per-op sync adds ~7.7 us). They are NOT
       used. The guard firing is the point: an un-guarded per-op split here would have been wrong.
   [B] isolated M=1 GEMVs, achieved weight bandwidth:
         head  N=50257 K=768 : 77.2 MB in 0.3174 ms = **243.2 GB/s** = 104% of copy BW, 98% of READ BW.
@@ -883,7 +925,7 @@ MEASURE-BEFORE-OPTIMIZE (§9.1 ; bench/profile_decode.cu):
       2. The 48 quantizable block matmuls are 1.2-4.7 MB each -> at M=1 they sit near a per-kernel latency
          floor, so halving their bytes gives 1.405x, not 2x.
       => **weight-side ceiling on the whole-step speedup = 1.278x**, BEFORE attention/LN/add/gelu and the
-         134-launch overhead dilute it. Measured 1.02-1.16x is consistent with that ceiling.
+         135-launch overhead dilute it. Measured 1.02-1.16x is consistent with that ceiling.
       => If the head could also be INT8 (it cannot, at this quality bar) the weight-side ceiling would be
          1.516x. Even then, "high" would be a stretch at batch=1 on a 124M model.
   KV reads are NOT dominating: 18.9 MB/step at ctx=512 = 7% of the 247.1 MB of weights (37.7 MB = 13% at
@@ -906,7 +948,9 @@ ROOFLINE CHECK (ceilings derived from the bytes each build ACTUALLY streams, wei
 
 regime check:     row 5 ("KV cache -> decode HIGH, essential") **CONFIRMED**, 14.7x-98.3x, growing with ctx.
                   row 2 ("tiled -> decode low")                **CONFIRMED** at true M=1: 1.38-1.40x vs
-                                                               5.57x at prefill; the residual is coalescing.
+                                                               5.57x at prefill. Coalescing on the 48 blocks
+                                                               (1.66x), dragged to 1.40x by the tied head,
+                                                               where the 16x16 tile is 2x SLOWER than naive.
                   row 4 ("INT8 -> decode high")                **REFUTED for this model/build**: 1.02-1.16x,
                                                                bounded at 1.278x by the fp16 tied head that
                                                                the quality gate requires. Reported as measured.
@@ -914,7 +958,7 @@ regime check:     row 5 ("KV cache -> decode HIGH, essential") **CONFIRMED**, 14
 baseline:         PyTorch eager / llama.cpp deferred. BENCH_PROTOCOL §5: an INT8 engine compares to
                   llama.cpp Q8_0, never to PyTorch fp16.
 notes:            The GEMV is the fast path and is at 98% of read BW on the one tensor large enough to be
-                  DRAM-bound. The remaining decode overhead is 134 kernel launches per step plus tiny,
+                  DRAM-bound. The remaining decode overhead is 135 kernel launches per step plus tiny,
                   under-parallel kernels (a M=1 LayerNorm is ONE block on a 24-SM GPU). Fusing them, or
                   CUDA-graphing the step, is the identified next lever -- it is NOT in BUILD_PLAN's Stage-5
                   manifest and was NOT attempted, per "don't add anything on DESIGN.md §2's IS-NOT list".
@@ -1005,7 +1049,7 @@ PREFILL @512 -- the 14.44x decomposes EXACTLY into two MEASURED factors:
 DECODE -- 1.24x at ctx=128, rising to 1.31x at ctx=1023. At short context the gap is almost ENTIRELY the
 fixed per-step overhead (attention is negligible there). The 73/27 split below is the ctx=1023 decomposition:
     fixed per-step overhead   0.3831 ms  (= the WHOLE gap at ctx=128, where attention is negligible)
-                                          our step is 134 kernel launches with several 1-block kernels
+                                          our step is 135 kernel launches with several 1-block kernels
                                           (an M=1 LayerNorm occupies 1 of 24 SMs); llama.cpp captures the
                                           step in a CUDA graph and fuses.
     attention ctx-scaling     0.1406 ms  (ours +0.2748 ms from ctx 128->1023; llama.cpp only +0.1342 ms)
@@ -1122,14 +1166,27 @@ Captured separately: `ncu -k k_gemv_fp16 --launch-skip 48 -c 1 --set full bench/
 k_gemv_fp16  head  N=50257 K=768   grid (12565,1,1) x (128,1,1)
 
   Duration                          317.28 us   <- matches the 0.3174 ms timed in [B] above
-  dram__bytes_read.sum               77.20 MB   <- = 50257*768*2 = 77.19 MB : W read EXACTLY ONCE
-  dram__bytes_read.sum.per_second   243.3 GB/s  <- vs 243.2 GB/s inferred  (0.04% apart)
-  dram__bytes_read ..pct_of_peak     95.15%     <- read-only utilization
+  dram__bytes_read.sum               77.20 MB   <- 77.203968 MB vs 50257*768*2 = 77.19 MB : W read ONCE
+  dram__bytes_read.sum.per_second   243.3 GB/s  <- 243.330711 ; vs 243.2 GB/s inferred (0.04% apart)
+  dram__bytes_read ..pct_of_peak     95.14%     <- 95.137417 ; read-only utilization
   DRAM throughput (SOL, read+write)  96.27%     <- ncu: ">80% of available memory performance"
   Compute (SM) throughput            29.57%
-  global-load efficiency            100.00%     (sectors/request 3.333; __half2 vector loads)
-  SM 1.92 GHz / DRAM 7.99 GHz                   <- at boost: ncu did NOT depress clocks here
+  global-load efficiency            100.00%     (32.000 B/sector; sectors/request 3.333; __half2 loads)
+  SM 1.92 GHz / DRAM 7.99 GHz                   <- MEMORY clock at its full 8000 MHz; see the note below
 ```
+
+> **`[GLOSS CORRECTED 2026-07-10]`** This block used to annotate the clock line "*at boost: ncu did NOT
+> depress clocks here*". **1.92 GHz is not this GPU's boost clock** — the timed runs sustain 2610 MHz and
+> `nvidia-smi` reports a 3105 MHz max. So the core clock during this capture *was* low, whether depressed by
+> ncu's replay or by the machine's power state. **It changes nothing here, and the reason is the point of the
+> whole roofline:** this kernel is DRAM-bound, the *memory* clock is at its full 8000 MHz, and the measured
+> 243.3 GB/s reproduces the 243.2 GB/s that was timed at 2610 MHz to within 0.04%. A bandwidth-bound number
+> does not care about the core clock. That property is measured head-on in the "Pre-public audit" section
+> below, where the whole engine was re-run at 1920 MHz.
+
+> **`[ROUNDING CORRECTED 2026-07-10]`** `pct_of_peak` was quoted as 95.15%; the raw counter is **95.137417%**
+> → 95.14%. The implied-DRAM-peak cross-check below is recomputed against the exact value (it moves by 0.1
+> GB/s and changes nothing). Raw counters for every figure in this section: **`docs/ncu/raw_counters.txt`**.
 
 Three things this nails down, none of them new but all of them now *measured*:
 
@@ -1142,16 +1199,38 @@ Three things this nails down, none of them new but all of them now *measured*:
    its quantization (KL 0.257, Δppl +0.549) is what caps INT8 decode at 1.02–1.16x. The ceiling is a
    **quality** constraint sitting on a **bandwidth-ready** kernel.
 3. **`k_gemv_fp16` is perfectly coalesced (100.00% efficiency)** where `k_matmul_tiled` reaches 51.55%.
-   Implied DRAM peak (read GB/s ÷ read pct_of_peak) agrees across four independent kernels — head
-   243.3/0.9515, qkv-naive 32.486/0.12705, qkv-tiled 35.380/0.13842, head-naive 80.298/0.31400 =
-   **255.7, 255.7, 255.6, 255.7 GB/s** ≈ the 256 GB/s theoretical. (Divide by the *read-only* 95.15%,
-   not the SOL 96.27%, which folds in writes.)
+   Implied DRAM peak (read GB/s ÷ read pct_of_peak) agrees across **five** independent kernels — head-gemv
+   243.331/0.95137, qkv-naive 32.486/0.12705, qkv-tiled 35.380/0.13842, head-naive 80.298/0.31397,
+   head-tiled 40.105/0.15680 = **255.8, 255.7, 255.6, 255.8, 255.8 GB/s** ≈ the 256 GB/s theoretical.
+   (Divide by the *read-only* 95.14%, not the SOL 96.27%, which folds in writes.) Every counter above is
+   reproduced verbatim in `docs/ncu/raw_counters.txt`.
 
-**Bonus corroboration of the M=1 GEMV-waste finding.** At the head shape and M=1, `k_matmul_tiled` is
-**2x SLOWER** than naive (ncu 1927.5 vs 962.7 us; free-running 1.4254 vs 0.8356 ms = 0.59x), with
-`Mem Pipes Busy` at 86.29%. The 16x16 tile computes 16 rows and masks 15 at the write, so at M=1 it burns
-16x the FLOPs — the direct measurement behind "INT8 bought exactly 1.00x because the tiled GEMM at M=1 is
-compute-bound on the rows it discards", and the reason Stage 5 ships a dedicated GEMV.
+### 3. The tied head at M=1: the tiled GEMM is **2× slower than naive** — and it is the Stage-5 brake
+
+Captured at the head shape (`profile_matmul.exe 50257 768`, report `ncu_profile_head.ncu-rep`):
+
+```
+                                   k_matmul (naive)   k_matmul_tiled
+  grid                              (197,1,1)x(256)   (3142,1,1)x(16,16)
+  Duration                              962.72 us         1927.52 us     <- tiled is 2.00x SLOWER
+  dram__bytes_read.sum                   77.30 MB          77.30 MB      <- SAME DRAM traffic
+  global-load sectors / request            16.487             1.887
+  global-load efficiency                   6.26%            51.54%
+  L1/TEX hit rate                         89.40%             5.10%
+```
+
+Same bytes off DRAM, twice the time. The 16×16 tile computes 16 output rows and masks 15 at the write, so
+at M=1 it burns **16× the FLOPs** on the model's largest tensor. Coalescing wins the transaction argument
+and still loses the wall clock. This is the direct measurement behind *"INT8 bought exactly 1.00× because
+the tiled GEMM at M=1 is compute-bound on the rows it discards"* (Stage 4: head M=1 1.4351 ms ≡ head M=16
+1.4346 ms), and the reason Stage 5 ships a dedicated GEMV.
+
+> **It is also the correction to Stage 5's `(2)` block and to ROOFLINE §5 row 2** — both of which used to
+> say the ~1.4× naive→tiled M=1 decode residual was coalescing "amplified by the tied head's 50257 rows."
+> The head **de-amplifies** it. At ctx=128: the 48 block matmuls give **1.662×** (naive 7.2138 → tiled
+> 4.3395 ms), the tied head gives **0.586×** (0.8356 → 1.4254 ms free-running), and together they compose
+> to the measured **1.396×**. The verdict ("row 2's decode payoff is LOW") is unchanged; only the mechanism
+> was stated backwards. Corrected at both sites, 2026-07-10.
 
 ### Engine unchanged
 
@@ -1166,8 +1245,15 @@ No file under `cuda/` was modified for this section; profiling is read-only. Eng
 in `docs/ncu/`. Reproduce from repo root (ncu on PATH, counters unblocked):
 
 ```
-# 1. coalescing, M=1 qkv -> ncu_profile_matmul.ncu-rep     (also: ... profile_matmul.exe 50257 768)
+# 0. build the two harnesses these captures drive (profile_matmul is NOT built by build_cuda.bat)
+build_cuda.bat            :: -> bench\profile_decode.exe  (and microbench.exe, correctness_cuda.exe, ...)
+build_profile.bat         :: -> bench\profile_matmul.exe
+
+# 1. coalescing, M=1 qkv -> ncu_profile_matmul.ncu-rep
 ncu --set full -o ncu_profile_matmul -f bench/profile_matmul.exe
+
+# 1b. the same two kernels at the HEAD shape -> ncu_profile_head.ncu-rep (where tiled LOSES 2x)
+ncu --set full -o ncu_profile_head -f bench/profile_matmul.exe 50257 768
 
 # 2. head GEMV, full Speed-of-Light -> ncu_head_gemv_sol.ncu-rep
 ncu -k k_gemv_fp16 --launch-skip 48 -c 1 --set full -o ncu_head_gemv_sol -f bench/profile_decode.exe 128
@@ -1176,10 +1262,196 @@ ncu -k k_gemv_fp16 --launch-skip 48 -c 1 --set full -o ncu_head_gemv_sol -f benc
 ncu --import ncu_head_gemv_sol.ncu-rep  --page details --section SpeedOfLight --section MemoryWorkloadAnalysis
 ncu --import ncu_profile_matmul.ncu-rep --page details --section MemoryWorkloadAnalysis
 
-# sectors/request is derived, not a stock metric:
-ncu --import <rep> --page raw --csv   # -> l1tex__t_sectors_... / l1tex__t_requests_...
+# dram__bytes_read.sum, its per_second/pct_of_peak, and sectors/request are RAW counters, not stock
+# section metrics -- `--page details` will not print them. They are transcribed in docs/ncu/raw_counters.txt:
+ncu --import <rep> --page raw --csv   # -> dram__bytes_read.sum, l1tex__t_sectors_..., l1tex__t_requests_...
 ```
 
 `--launch-skip 48` selects the head: `profile_decode` issues the 12x4 = 48 block GEMVs first. A GUI
 Speed-of-Light capture (for `docs/index.html`) must come from `ncu-ui ncu_head_gemv_sol.ncu-rep` →
 Details → GPU Speed Of Light; the ncu **CLI cannot emit images**, only the tables reproduced above.
+
+---
+
+## Pre-public audit · 2026-07-10 — a full re-run, and what it caught
+
+*Before this work went public, every gate was re-run from a clean build on every shipped backend, the
+decode path was traced end-to-end against its source, and every number on `README.md` / `docs/index.html`
+was checked line-by-line against a source in this file. **No kernel was changed.** Two real defects and
+four documentation faults were found and fixed; one accident produced the strongest single piece of
+evidence in the repository. Recorded here rather than quietly folded in — the same rule that governs the
+"doc pass" table above.*
+
+### 1. Gates re-run from a clean build — all six backends PASS
+
+Tree wiped of binaries; `build.bat` + `build_cuda.bat` + `build_profile.bat` rebuilt from source. Every
+value reproduces this file exactly.
+
+```
+backend      gate (a) worst layer     gate (b)                       gate (c) PRIMARY max KL
+-----------------------------------------------------------------------------------------------
+cpu fp32     final_ln 4.584e-07       128/128, 0 bug                 6.484e-10  [top-1 512/512]
+naive        final_ln 1.073e-03       127/128, 1 tolerated, 0 bug    1.953e-03  [506/512]
+tiled        final_ln 1.073e-03       128/128, 0 bug                 1.953e-03  [506/512]
+flash        final_ln 1.073e-03       127/128, 1 tolerated, 0 bug    1.951e-03  [506/512]
+int8 (kt)    final_ln 8.584e-03       127/128, 1 tolerated, 0 bug    1.495e-02  [498/512]
+gemv  (KV)   final_ln 1.073e-03       127/128, 1 tolerated, 0 bug    1.953e-03  [505/512]
+int8  (KV)   final_ln 9.388e-03       127/128, 1 tolerated, 0 bug    1.490e-02  [497/512]
+
+[EQ] cached decode == no-KV recompute:  fp16 max|dlogit| 0.1875, KL 4.883e-04, argmax 28/28  PASS
+                                        INT8 max|dlogit| 0.2500, KL 4.687e-04, argmax 28/28  PASS
+```
+
+**Decode-path trace** (`gpt2_decode_step_cuda`, cuda/kvcache.cu): `embed_one(token,pos)` -> per layer
+`ln1 -> QKV GEMV -> kv_append_one(pos) -> attn_decode(len=pos+1) -> attnproj GEMV -> add -> ln2 ->
+fc GEMV -> gelu -> proj GEMV -> add` -> `ln_f` -> tied-head GEMV -> `kv->len = pos+1`. Attention runs
+`j` over `[0,len)` = `[0,pos]` inclusive; causality holds because the cache only ever holds `[0,pos]`.
+**No cached token is counted as generated** (BENCH_PROTOCOL §7): `bench_decode.cu` re-pins `kv.len = ctx`
+before *every* timed step, so each timed call emits exactly one token at position `ctx`, the cache never
+grows across the timing loop, and `fill(ctx)` sits outside the timed region.
+
+### 2. *** THE CLOCK-THROTTLE CORROBORATION *** — ROOFLINE §1's core claim, measured head-on
+
+**This was an accident.** The re-run came back ~36% slow, and the cause was that the GPU sat at
+**SM 1920 MHz** all session, not the **2610 MHz** every block in this file records (`nvidia-smi` max:
+3105 MHz; mem clock 8000 MHz throughout, 35-56 W, 58-65 °C, never near the 105 W cap). Rather than a
+problem, it is a **natural experiment on the central regime claim**, and the engine passed it.
+
+ROOFLINE §1, written before any kernel existed: *"GDDR6 clock is set by the memory chips, not by TGP …
+expect the power limit to cost prefill FLOP/s, not decode tok/s."* At 0.7356× the core clock:
+
+```
+                                      ledger @2610      today @1920     ratio     clock ratio = 0.7356
+COMPUTE peaks (must scale with clock)
+  tensor GEMM, fp32-accum              31.51 TF          23.23 TF       0.7372
+  tensor GEMM, fp16-accum              60.98 TF          45.39 TF       0.7443
+  CUDA-core FMA pipe                   15.64 TF          11.51 TF       0.7359
+  CUDA-core GEMM (fp16 in/f32 acc)     10.10 TF           7.47 TF       0.7396
+  CUDA-core SGEMM                       9.81 TF           7.35 TF       0.7492
+MEMORY peaks (must NOT scale with clock)
+  copy BW (2N r+w)                    233.4 GB/s       233.2 GB/s       0.9991
+  read BW (1N)                        248.9 GB/s       249.1 GB/s       1.0008
+```
+
+Every compute ceiling moved by the clock ratio. Neither memory ceiling moved at all. The engine's own
+timings then split along exactly the same seam:
+
+```
+PREFILL @P=512 (compute-bound): today x 0.7356 lands back on the ledger, at every stage of the ladder
+  naive  1141.184 ms -> 839.49   vs ledger 840.00   (-0.06%)
+  tiled   250.777 ms -> 184.48   vs ledger 184.785  (-0.17%)
+  flash   145.609 ms -> 107.12   vs ledger 107.341  (-0.21%)
+  int8    145.668 ms -> 107.16   vs ledger 107.360  (-0.19%)
+
+no-KV RECOMPUTE-decode (prefill-shaped, compute-bound): three contexts, one clock correction
+  ctx=128    41.6041 ms -> 30.605   vs ledger  30.6196  (-0.05%)
+  ctx=512   149.8102 ms -> 110.205  vs ledger 110.2321  (-0.02%)
+  ctx=1023  300.8266 ms -> 221.298  vs ledger 221.3612  (-0.03%)
+
+TRUE M=1 KV DECODE step (memory/launch-bound): barely notices a 26% core-clock cut
+  ctx=128    1.7967 ms  vs ledger 1.7584   (+2.2%)
+  ctx=512    2.0786 ms  vs ledger 1.9278   (+7.8%)
+  ctx=1023   2.4677 ms  vs ledger 2.1940   (+12.5%)
+
+HEAD GEMV (pure DRAM): 0.3174 ms, 77.2 MB, 243.2 GB/s -- IDENTICAL at both clocks.
+```
+
+Three corollaries, all of which the file previously asserted and now measures:
+
+1. **Prefill is compute-bound and decode is not.** A 26% core-clock cut costs prefill 36% and the M=1
+   decode step 2-12% (what remains is attention's real arithmetic, which grows with ctx, plus latency).
+   This is the director map's regime split, isolated by an independent variable nobody chose.
+2. **The measured denominator is the right one.** Prefill efficiency is *clock-invariant*: flash@512 is
+   631.1 GFLOP/s / 7.47 TF = **8.45%** today, and 856.1 / 10.10 = **8.48%** in the ledger. A denominator
+   that tracks its numerator across a 26% clock swing is a denominator, not a guess. (A clock-*derived*
+   16.0 TF ceiling would have silently misstated this by 1.55× at one clock and by more at the other.)
+3. **The FMA-pipe sanity check reproduces.** 11.51 TF against the 128-lane issue width at the *actual*
+   clock (24 × 128 × 2 × 1.920 GHz = 11.796 TF) is **97.6%** — the ledger's 97.5% at 2610 MHz. GEMM/FMA
+   = 64.9% (ledger 64.6%).
+
+> **What this does NOT do.** It does not revise a single recorded number. Every block above states its
+> clock (BENCH_PROTOCOL §4 requires it) and every block is reproducible *at the clock it records*. The
+> ledger's absolute values remain the 2610 MHz ones. What the accident bought is the check that the whole
+> regime analysis — the reason this project reports prefill and decode separately at all — survives a
+> 26% perturbation of the one variable it claims decode is insensitive to.
+
+### 3. `[BUG FIXED]` The decode step launches **135** kernels, not 134
+
+`bench/profile_decode.cu` printed `1 + NL*11 + 1` = 134, which counts `embed_one` + 12×11 per-layer
+kernels + **one** of the two trailing kernels. The launch inventory of `gpt2_decode_step_cuda` is:
+
+```
+  embed_one                                                                       1
+  x12 layers: ln1, gemv qkv, kv_append, attn_decode, gemv attnproj, add,
+              ln2, gemv fc, gelu, gemv ffnproj, add            = 11 each   ->   132
+  ln_f                                                                            1
+  tied-head gemv                                                                  1
+                                                                          -------- 
+                                                                               135
+```
+
+Corrected at the source (`1 + NL*11 + 2`, re-run: `[launch] 135 kernel launches per step`) and propagated
+to this file (×5), `ROOFLINE.md`, `README.md`, `docs/index.html`, and `bench/bench_decode.cu`. It affects
+no timing, ratio, ceiling or verdict — it is a rhetorical count — but it was wrong at its source, which is
+the one thing this project claims never to allow.
+
+**The prefill count is correct and untouched:** `embed(1) + 12 × 10 + ln_f(1) + logits(1) = 123`, the
+"~123 kernel launches" quoted in the external-baseline section.
+
+### 4. `[MECHANISM FIXED]` The tied head is the brake on the M=1 tiled GEMM, not an amplifier
+
+Stage 5's `(2)` block and ROOFLINE §5 row 2 both explained the 1.396× naive→tiled M=1 decode ratio as
+coalescing "amplified by the tied head's 50257 rows." **Backwards**, and refuted by this file's own ncu
+section (which was added later and never reconciled with it): at the head shape, tiled is **2.00× slower**.
+
+Re-measured directly — `profile_matmul.exe bw <N> <K>`, M=1 row, interleaved A/B, median of 100.
+**Clock state: SM 1920 MHz (see §2), mem 8000 MHz** — ratios only; the tiled side is compute-bound and the
+naive side transaction-bound, so the *ratio* itself is mildly clock-dependent (the head reads 0.59× at
+2610 MHz, 0.50× here). The sign and the ordering are not:
+
+```
+  tensor            N       K       naive ms   tiled ms   tiled/naive
+  qkv             2304     768       0.1187     0.0993       1.19x     <- Stage 2's isolated 1.18x @2610
+  attn c_proj      768     768       0.1198     0.0418       2.86x
+  mlp c_fc        3072     768       0.1198     0.1300       0.92x     <- tile waste already biting
+  mlp c_proj       768    3072       0.4516     0.1526       2.96x
+  TIED HEAD      50257     768       0.9708     1.9323       0.50x     <- 2x SLOWER; the largest tensor
+```
+
+The coalescing win at M=1 is **strongly shape-dependent**, spanning 0.50×–2.96×; quoting the qkv 1.18× as
+if it generalised was the error. Decomposing the ctx=128 step with the ledger's own head timings
+(naive 0.8356, tiled 1.4254 ms):
+
+```
+  48 block matmuls + everything else :  7.2138 -> 4.3395 ms   = 1.662x   <- this is the coalescing win
+  tied head, M=1                     :  0.8356 -> 1.4254 ms   = 0.586x   <- 15-of-16 rows discarded
+  whole decode step                  :  8.0494 -> 5.7649 ms   = 1.396x
+```
+
+**Verdict UNCHANGED.** Row 2 predicted "low", and 1.40× against prefill's 5.57× is low. The point of the
+row — that tiling-for-*reuse* cannot pay when there is one row to reuse — stands untouched. Only the
+stated cause was wrong, and the corrected cause is the *same* tile-waste that Stage 4 measured (head M=1
+≡ head M=16 in time) and that forced Stage 5 to ship a dedicated M=1 GEMV. Corrected at both sites.
+
+### 5. Documentation faults fixed (no measured value changed)
+
+| # | Where | Was | Now |
+|---|---|---|---|
+| 1 | Stage 5 `(2)` + ROOFLINE §5 row 2 | 1.4× residual "amplified by the tied head" | **the head is the brake**: blocks 1.662×, head 0.586×, net 1.396× (§4 above) |
+| 2 | 6 files | "134 kernel launches per decode step" | **135**, fixed at the source expression first (§3 above) |
+| 3 | Phase −1 block | `31.51 TFLOP/s [PREFILL denom]`; verdict "memory-bound by ~65–135×" | 31.51 = **tensor peak / bug line**; prefill denom is the measured 10.10 TF, governing ridge 43.3 (→ ~22–43×). Labels only; the doc pass fixed ROOFLINE §1 in item 12 but missed this block |
+| 4 | "Results at a glance" | "56% of the 920 ceiling … llama.cpp at 68% **of the same ceiling**" | not the same basis (511.7/920 vs 636.4/938). Replaced with the same-basis bandwidth pair README always used: **54.6% vs 68.4%** of copy BW |
+| 5 | ncu head-GEMV block | "SM 1.92 GHz ← **at boost**: ncu did NOT depress clocks" | 1.92 GHz is *not* boost. Gloss corrected; conclusion untouched (DRAM-bound, mem clock full, 243.3 ≡ 243.2 to 0.04%) — and §2 above is the general proof |
+| 6 | ncu head-GEMV block | `pct_of_peak 95.15%` | raw counter is **95.137417%** → 95.14%. Implied-DRAM-peak cross-check recomputed (255.6–255.8 GB/s across five kernels) |
+| 7 | `docs/ncu/` | the exports did not contain `dram__bytes_read.sum`, its per-second / pct-of-peak, or bytes-per-sector — three figures the project page prints | added **`docs/ncu/raw_counters.txt`**: verbatim `--page raw --csv` transcription for all three captures, so a cloner can verify every published ncu number |
+| 8 | `build_cuda.bat` | did not build `bench/microbench.exe`, which README instructs the reader to run (and which alone needs `-lcublas`) | added. `README.md` now lists all three build scripts and the binary each produces; the ncu repro block now names `build_profile.bat` |
+| 9 | `build.bat`, `build_profile.bat` | a non-ASCII byte in a `REM` line made `cmd` print a spurious `'M' is not recognized …` before every build | ASCII-only; noted in-file |
+| 10 | 12 sites across 8 files | 8 cross-references pointing at the design log under a **former filename** (a file that does not exist in this repo); a stray internal note in `tools/llamacpp_gpt2_convert.patch`, which ships into someone else's tree; an internal escalation phrase in a runtime warning printed by `correctness_cuda` | re-pointed at `DESIGN.md §5 / §9.1 / §9.3 / §3` — the sections they always meant; patch comment and runtime warning re-voiced |
+
+### Engine unchanged
+
+Nothing under `cuda/`, `model/` or `bench/` changed except **comments, `printf` strings, and the one
+launch-count expression inside a `printf` argument**. No kernel, no numeric path, no allocation, no launch
+configuration. Proof: the gate matrix in §1 above, re-run after every edit, reproduces every pre-audit
+value bit-for-bit — including the fp16 `1.953e-03` / INT8 `1.495e-02` KLs and the `[EQ]` equivalence
+figures, which a single changed kernel byte would move.

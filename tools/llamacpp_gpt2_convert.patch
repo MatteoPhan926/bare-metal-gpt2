@@ -7,9 +7,9 @@ index 1cf06ae..52dada4 100644
          # we don't need these
          if name.endswith((".attn.bias", ".attn.masked_bias")):
 -            yield from super().modify_tensors(data_torch, name, bid)
-+            # LOCAL PATCH (impl-agent, external-baseline task): upstream fell through to
-+            # super().modify_tensors(), which calls map_tensor_name() on the very causal-mask
-+            # buffer this branch means to DROP -> ValueError: Can not map tensor 'h.0.attn.bias'.
++            # LOCAL PATCH: upstream falls through to super().modify_tensors(), which calls
++            # map_tensor_name() on the very causal-mask buffer this branch means to DROP
++            # -> ValueError: Can not map tensor 'h.0.attn.bias'.
 +            # The comment above states the intent; honour it by yielding nothing.
              return
  

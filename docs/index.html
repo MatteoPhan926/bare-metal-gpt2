@@ -154,9 +154,34 @@
     Independently confirmed by the baseline. This engine's decode step reaches 127.4 GB/s (54.6% of copy
     bandwidth); llama.cpp, with CUDA graphs and fused kernels, reaches 159.6 GB/s (68.4%). Both are far from
     the bus. The roofline said decode was memory-bound; at this model size, what it actually waits on is
-    kernel launches. The decode gap runs 1.24× at ctx=128 — almost entirely that fixed per-step overhead —
-    rising to 1.31× at ctx=1023, where the fixed cost is still 73% of the gap and the remaining 27% is our
-    attention kernel scaling worse with context.
+    kernel launches — 135 of them per decode step, where llama.cpp captures the whole step in a CUDA graph.
+    The decode gap runs 1.24× at ctx=128 — almost entirely that fixed per-step overhead — rising to 1.31× at
+    ctx=1023, where the fixed cost is still 73% of the gap and the remaining 27% is our attention kernel
+    scaling worse with context.
+  </p>
+
+  <h3>The GPU throttled itself, and confirmed the whole regime analysis</h3>
+  <p>
+    A pre-release re-run came back 36% slow. The cause: the GPU was sitting at 1920 MHz rather than the
+    2610 MHz every recorded benchmark states. That accident turned into the best evidence in the project.
+    The roofline had claimed — <em>before any kernel existed</em> — that on this laptop the power limit
+    throttles the core clock and therefore prefill, while GDDR6 is clocked by the memory chips and leaves
+    decode intact. At 0.7356× the clock, <strong>every compute ceiling scaled by 0.736–0.749</strong>
+    (tensor GEMM 31.51 → 23.23 TFLOP/s, CUDA-core GEMM 10.10 → 7.47) and <strong>neither memory ceiling
+    moved at all</strong> (copy 233.4 → 233.2 GB/s, read 248.9 → 249.1).
+  </p>
+  <p>
+    The engine split along the same seam. Prefill, multiplied by that single clock ratio, lands back on the
+    recorded numbers at <em>every stage of the ladder</em> — naive 840.0, tiled 184.8, flash 107.3, INT8
+    107.4 ms — within 0.21%. The no-KV recompute path returns to within 0.05% at three separate context
+    lengths. The true M=1 decode step, meanwhile, barely notices: +2.2% at ctx=128. The head GEMV, pure
+    DRAM, is identical to the microsecond. Prefill is compute-bound; decode is not; the ceilings say so and
+    a 26% clock swing proves it.
+  </p>
+  <p>
+    It also validates the denominator. Prefill efficiency is clock-invariant — 631.1 GFLOP/s ÷ 7.47 TFLOP/s
+    = 8.45% today, 856.1 ÷ 10.10 = 8.48% before. A ratio that holds across a 26% clock swing is a
+    measurement. A clock-<em>derived</em> ceiling could not have done that, which is the next section.
   </p>
 
   <h3>I checked my own denominators, and one was wrong</h3>
@@ -243,13 +268,7 @@
     sitting on a <b>bandwidth-ready</b> kernel — not a bandwidth limit.
   </p>
 
-  <!-- ============================================================
-       Optional: a genuine Nsight Compute GUI capture. ncu's CLI cannot
-       emit images, so this must be taken from ncu-ui by hand:
-         ncu-ui ncu_head_gemv_sol.ncu-rep      -> Details -> GPU Speed Of Light
-       Save as docs/ncu/head_gemv_sol.png and uncomment:
-       <img src="ncu/head_gemv_sol.png" alt="Nsight Compute Speed-of-Light, head GEMV: 96.27% DRAM throughput">
-       ============================================================ -->
+  <img src="ncu/head_gemv_sol.png" alt="Nsight Compute Speed-of-Light, head GEMV: 96.27% DRAM throughput">
   <div class="placeholder">
     <strong>Nsight Compute GUI capture slot</strong>
     <span>Optional garnish. The Speed-of-Light numbers above are the same ones the GUI renders — exported

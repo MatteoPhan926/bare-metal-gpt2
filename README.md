@@ -50,7 +50,7 @@ sum-of-parts lands within 0.7% of the uninstrumented forward, which bounds the p
 above.
 
 The decode gap runs 1.24× at ctx=128 and 1.31× at ctx=1023. At short context it is almost entirely fixed
-per-step overhead: our decode step is 134 kernel launches, where llama.cpp captures the whole step in a
+per-step overhead: our decode step is 135 kernel launches, where llama.cpp captures the whole step in a
 CUDA graph. By ctx=1023 that fixed cost still accounts for 73% of the gap, and the remaining 27% is our
 attention kernel scaling worse with context than theirs.
 
@@ -149,10 +149,14 @@ instead of published.
 ## Reproducing it
 
 **Build the engine** (Windows, MSVC + CUDA 12.6; the MinGW `gcc` on PATH is 32-bit and cannot hold the
-498 MB fp32 model):
+498 MB fp32 model). Three scripts, each callable from the repo root; together they build every binary
+named below:
 
 ```bat
-build_cuda.bat
+build_cuda.bat      :: Stages 1-5: correctness_cuda, kv_gate, bench_decode, profile_decode,
+                    ::            profile_forward, ab_forward, eval_ppl_cuda, microbench
+build.bat           :: Stage 0: the pure-C fp32 reference (bench\correctness.exe)
+build_profile.bat   :: the isolated matmul harness the ncu section drives (bench\profile_matmul.exe)
 ```
 
 **Run the gates** (correctness before speed, every time):
@@ -163,12 +167,16 @@ bench\correctness_cuda.exe all      :: gates (a) (b) (c) vs the HF fp16 oracle
 bench\kv_gate.exe                   :: Stage-5 KV-cache decode gates + cached-vs-recompute equivalence
 ```
 
+`GPT2_BACKEND` selects the kernel path: `naive` | `tiled` | `flash` | `int8` | `gemv`. All six shipped
+paths (those five plus the pure-C fp32 reference) pass the gates.
+
 **Benchmark:**
 
 ```bat
 bench\bench_decode.exe 50           :: true M=1 decode; KV vs no-KV; naive/tiled/gemv/int8
 bench\profile_decode.exe 512        :: per-op attribution + achieved bandwidth per GEMV
 bench\microbench.exe cudacore       :: the measured CUDA-core ceiling behind every "% of roofline"
+bench\profile_matmul.exe bw 50257 768  :: the M-sweep: why tiling loses at M=1 on the tied head
 ```
 
 **Reproducing the llama.cpp baseline** — three traps, all of which cost me time:

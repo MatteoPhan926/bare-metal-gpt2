@@ -180,9 +180,17 @@ easiest way to misread a prefill number. All three denominators are measured (§
 > **Row 2 (tiled GEMM → decode "low") — CONFIRMED.** With the KV cache and no GEMV, the decode path uses the
 > tiled GEMM at true M=1: naive→tiled is **1.396× @ctx=128, 1.379× @ctx=512** (above noise), against **5.57×
 > at prefill@128**. The tiling-for-**reuse** win is absent — as the roofline requires, since at M=1 there is
-> only one row to reuse. The residual ~1.4× is **coalescing** (tiled reads W contiguously, naive strided),
-> consistent with Stage 2's isolated M=1 prediction of 1.18×, amplified by the tied head's 50257 rows. So it
-> is not literally "flat", but the cell said *low*, and low is what it is.
+> only one row to reuse. So it is not literally "flat", but the cell said *low*, and low is what it is.
+>
+> ⚠ **Mechanism corrected 2026-07-10** (pre-public audit; BENCHMARKS "Stage 5 (2)"). This paragraph used to
+> attribute the ~1.4× to coalescing "amplified by the tied head's 50257 rows." **The head does the opposite.**
+> At M=1 on the head shape the 16×16 tiled GEMM is **2.00× slower** than naive (ncu: 962.7 → 1927.5 µs, both
+> reading the same 77.3 MB from DRAM) — it computes 16 output rows and masks 15, so it burns 16× the FLOPs on
+> the model's largest tensor. Decomposed at ctx=128: the 48 block matmuls give **1.662×** (that *is* coalescing),
+> the tied head gives **0.586×**, and the two compose to the measured **1.396×**. The head is the **brake**.
+> The verdict is untouched — the point of row 2 was that *reuse* cannot pay at M=1, and it does not.
+> This is the same tile-waste that Stage 4 measured (head M=1 ≡ head M=16 in time) and that forced Stage 5's
+> dedicated M=1 GEMV.
 >
 > **Row 4 (INT8 → decode "high", the main decode lever) — REFUTED for this model and this build.** With the
 > KV cache AND the true M=1 GEMV — i.e. with every precondition this annotation demanded — INT8 buys
@@ -197,7 +205,7 @@ easiest way to misread a prefill number. All three denominators are measured (§
 >    floor (`attnproj` takes 8.2 µs whether fp16 or INT8). Streamed back-to-back (169.9 vs 84.9 MB, both ≫ the
 >    32 MiB L2), they give **1.405×, not 2.00×**.
 >
-> ⇒ **Weight-side ceiling on the whole-step speedup = 1.278×**, before attention/LayerNorm/add/GELU and 134
+> ⇒ **Weight-side ceiling on the whole-step speedup = 1.278×**, before attention/LayerNorm/add/GELU and 135
 > kernel launches per step dilute it further. The measured 1.02–1.16× is exactly consistent with that ceiling.
 > Had the head been quantizable the ceiling would be 1.516× — still not "high" at batch=1 on a 124M model.
 >

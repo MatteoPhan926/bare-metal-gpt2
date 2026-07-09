@@ -1,4 +1,4 @@
-// profile_forward.cu — STAGE 3 measure-before-optimize (CLAUDE.md §9.1). Answers ONE question with a
+// profile_forward.cu — STAGE 3 measure-before-optimize (DESIGN.md §9.1). Answers ONE question with a
 // MEASUREMENT instead of a guess: in the Stage-2 tiled forward, WHERE does the time go?
 //
 // Method. Mirrors cuda/forward_cuda.cu op-for-op, but brackets EVERY backend call in its own
@@ -195,7 +195,7 @@ int main(int argc, char **argv) {
 
     const GPT2Backend *be = gpt2_backend_by_name(getenv("GPT2_BACKEND"));
     cudaDeviceProp p; CUDA_CHECK(cudaGetDeviceProperties(&p, 0));
-    printf("==== per-op forward attribution (measure-before-optimize, CLAUDE.md §9.1) ====\n");
+    printf("==== per-op forward attribution (measure-before-optimize, DESIGN.md §9.1) ====\n");
     printf("device: %s  sm_%d%d  %d SM   backend: %s\n", p.name, p.major, p.minor, p.multiProcessorCount, be->name);
     printf("timing: every op bracketed by its own CUDA-event pair + sync AFTER (execution, not launch).\n");
     printf("        per-op syncs SERIALIZE the forward -> SUM(per-op) > true forward latency.\n");
