@@ -175,7 +175,32 @@ of each kill-test is recorded, which is the whole point of pre-registering them.
   → **`[FALSIFIED for prefill, Stage 3a]`** an above-noise **2.9% SLOWDOWN** (0.971× at three shapes,
     disjoint ranges) → **REVERTED** (`git show fb5ad32`). A fusion pays only when the producer's output is
     consumed **once**; the tiled GEMM re-stages A per column-tile (144× for qkv), so it re-normalized 144×.
-    **Still OPEN for true M=1 decode**, where LN's share is far larger — untestable until Stage 5.
+  → **`[CLOSED for true M=1 decode — Stage 5. NOT by a kill-test; by the measurement that made the bet
+    moot. Recorded as an outcome, because a pre-registered bet does not get to stay open.]`**
+    This bet was left "OPEN, untestable until Stage 5" on the premise that **LN's share is far larger at
+    true M=1**, so the fusion might pay there even though it lost at prefill. Stage 5 built true M=1 decode
+    — and it did not make the premise testable so much as **redirect it**:
+    - **The share cannot be measured with this engine's tooling, and that is a measured fact, not an
+      excuse.** `bench/profile_decode.cu`'s per-op attribution of a decode step trips **its own validity
+      guard**: sum-of-parts / whole = **1.51×**, because each per-op sync adds ~7.7 µs to a step that is only
+      ~2 ms across 135 launches. The per-op shares are therefore **not used** (BENCHMARKS Stage 5 `[A]`). Any
+      "LayerNorm is X% of decode" figure from this harness would be an un-guarded number, and a fused-LN
+      payoff claimed against it would rest on one.
+    - **What IS measured is where the M=1 headroom actually lives, and it is not the LN round-trip.**
+      Against llama.cpp the decode gap decomposes into **fixed per-step overhead 0.3831 ms — the *whole*
+      gap at ctx=128, and still 73% of it at ctx=1023** — against a step of 135 kernel launches, several of
+      them 1-block kernels (an M=1 LayerNorm occupies **1 of 24 SMs**). llama.cpp captures the whole step in
+      a **CUDA graph**. The M=1 lever is the **launch count**, not the activation round-trip a fusion saves.
+    - **And the Stage-3a mechanism does not weaken at M=1 — it applies with *more* force.** The kill-test
+      showed a fusion pays only when the producer's output is consumed **once**. `k_gemv_fp16` runs **one
+      warp per output row**, and every such warp re-reads the whole activation row, so an on-the-fly LN
+      fusion would re-normalize that row **once per output row** (up to 50257 at the tied head) against the
+      144× that already lost at prefill. *(Structural reading of the shipped kernel — flagged as a
+      prediction, NOT a measurement: no fused M=1 kernel was built, so none was timed.)*
+    **Outcome:** the fusion is **not** the M=1 lever; **CUDA-graph capture / launch-count reduction is** —
+    and that is on DESIGN §2's IS-NOT list and README's "deliberately not built", which is exactly why the
+    remaining gap can be *attributed* to it rather than hand-waved. **No fused-LN speedup is claimed for
+    decode, because none was measured.** The bet closes with a "no", not with a silence.
 - **[CONJECTURE]** INT8 holds quality within Δperplexity ≤ **(pre-register, e.g. +0.3)** vs fp16.
   *Kill-test:* measure perplexity on held-out text. Exceeds the bound → per-channel, or keep fp16 for
   sensitive layers.
@@ -186,9 +211,15 @@ of each kill-test is recorded, which is the whole point of pre-registering them.
     for this model. Bound never re-tuned.
 - **[CONJECTURE]** Tiled GEMM reaches **X%** of the compute roofline for prefill. *Kill-test:* measure
   achieved FLOP/s vs the ceiling (G7).
-  → **`[MEASURED]`** prefill@512 = **856 GFLOP/s** = **5.35%** of the CUDA-core 16.0 TF peak (the right
-    denominator — no WMMA), = 2.72% of the 31.5 TF *tensor* peak, which is the WMMA headroom, not this
-    kernel's efficiency. Stage 2 = 4.5–5.6× prefill; Stage 3b flash added 1.72× @512.
+  → **`[MEASURED]`** prefill@512 = **856 GFLOP/s** = **8.48%** of the **measured achievable CUDA-core GEMM
+    peak, 10.10 TFLOP/s** (the right denominator — no WMMA), = 2.72% of the 31.5 TF *tensor* peak, which is
+    the WMMA headroom, not this kernel's efficiency. Stage 2 = 4.5–5.6× prefill; Stage 3b flash added
+    1.72× @512.
+    > **`[CORRECTED 2026-07-11]`** This line read "**5.35%** of the CUDA-core **16.0 TF** peak" — the
+    > clock-*derived* denominator that G2 forbids and that Phase −1b retracted (optimistic by 1.55×;
+    > ROOFLINE §6b, BENCHMARKS doc-pass item 12). The same stale figure this project's own write-up cites as
+    > its headline self-catch had survived here, in the very bet that asked "**X%** of the compute roofline".
+    > Restated against the measured 10.10 TF. **The GFLOP/s did not change; only the denominator did.**
 - **[CONJECTURE]** KV cache gives ≥ **Y×** decode speedup. *Kill-test:* measure decode tok/s with and
   without.
   → **`[OPEN — Stage 5]`** and note Stage 4's finding: the KV cache alone will not surface the INT8 decode

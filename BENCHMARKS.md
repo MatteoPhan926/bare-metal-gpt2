@@ -52,13 +52,25 @@ early decode column is labelled, not celebrated.
 
 | Stage | What it adds | prefill @512 | decode | note |
 |---|---|---|---|---|
-| 0 | pure-C fp32 reference | 3347 ms | ~1.6 tok/s (no-KV) | correctness oracle; CPU, not roofline-checked |
-| 1 | naive CUDA fp16 | 840.0 ms | 6.7 tok/s (no-KV) | GPU baseline; uncoalesced by design |
-| 2 | tiled / shared-memory GEMM | 184.8 ms (**4.55×**) | 36.1 tok/s (no-KV) | the "decode" win is GEMM reuse, **not** a decode result |
-| 3b | flash attention (online softmax) | 107.3 ms (**1.72×**) | 46.7 tok/s (no-KV) | attention 44.8% → 5.3% of prefill |
+| 0 | pure-C fp32 reference | 3347 ms | ~1.6 tok/s (no-KV † @ctx 33→155) | correctness oracle; CPU, not roofline-checked |
+| 1 | naive CUDA fp16 | 840.0 ms | 6.7 tok/s (no-KV † @ctx 34→155) | GPU baseline; uncoalesced by design |
+| 2 | tiled / shared-memory GEMM | 184.8 ms (**4.55×**) | 36.1 tok/s (no-KV † @ctx 34→155) | the "decode" win is GEMM reuse, **not** a decode result |
+| 3b | flash attention (online softmax) | 107.3 ms (**1.72×**) | 46.7 tok/s (no-KV † @ctx 34→155) | attention 44.8% → 5.3% of prefill |
 | 3a | fused LayerNorm+matmul | — | — | **reverted**: measured 2.9% *slowdown*, above noise |
-| 4 | weight-only INT8 | 107.1 ms (1.00×) | — | both gates pass via the pre-registered kill-test; **zero speedup, honestly** |
+| 4 | weight-only INT8 | 107.1 ms (1.00×) | — (no-KV †; 47.0 tok/s @ctx 34→155 = flash's, unmoved) | both gates pass via the pre-registered kill-test; **zero speedup, honestly** |
 | 5 | KV cache + true M=1 GEMV | 107.1 ms | **511.7 tok/s** @ctx=128 | **14.7–98.3×** over no-KV recompute |
+
+> **† The ctx on the no-KV cells, as BENCH_PROTOCOL §3 requires ("decode @ a STATED ctx").** The no-KV
+> cells are **not** a single-ctx measurement and must not be read as one: pre-Stage-5 the harness
+> full-recomputes the whole sequence every step, so each is the **median per-token time over a generation
+> that sweeps ctx 34→155** (Stage 0: 33→155), and the per-token cost **grows ~linearly with ctx across that
+> sweep** — a single stated ctx is not a thing the pre-Stage-5 engine can produce. Stated here rather than
+> left blank, because a bare tok/s is precisely what §3 forbids. **Only the Stage-5 cell is at a stated
+> ctx** (=128), because only Stage 5 has a true M=1 decode step whose cost is a function of one ctx.
+> The **14.7–98.3×** KV win is measured no-KV-vs-KV at three *matched, stated* contexts (128 / 512 / 1023),
+> both sides answering "what does one more token at this ctx cost?" — see Stage 5 `(1)`. Stage 4's decode
+> cell stays **—** because INT8 moved nothing: the shipped kill-test build measures **47.0 tok/s** on that
+> same sweep, which is *flash's own* 47.0 — a dash, not a dead cell.
 
 Stage 5 fp16 decode reaches 511.7 tok/s at ctx=128. Against the ceiling derived from the bytes it actually
 streams (weights 248.9 MB + KV 4.7 MB → **920 tok/s** at the measured 233.4 GB/s copy BW) that is **55.6%** —
@@ -87,11 +99,11 @@ a stage; this pass fixes what the DOCS say, not what the engine did. Fixed in pl
 | # | Where | Was | Now |
 |---|---|---|---|
 | 1 | QUALITY_GATES §1(b),(c) | still stated the pre-A1 constants (`margin ≥ 0.05` = bug; `top-1 ≥ 99%` = pass/fail) — **self-contradictory** with §1.1 | marked SUPERSEDED for fp16/quant by A1; still binding for the fp32 path. Bug-catchers (a ≤1e-2, KL <0.02) untouched |
-| 2 | ROOFLINE §1 | 256 GB/s labelled "decode denominator"; 31.5 TF labelled "prefill denom" | 256 = **bug line**; 233/249 achieved = decode denominator; 31.5 TF = bug line + WMMA headroom; **16.0 TF CUDA-core** added as the real prefill denominator for the shipped non-WMMA kernels |
+| 2 | ROOFLINE §1 | 256 GB/s labelled "decode denominator"; 31.5 TF labelled "prefill denom" | 256 = **bug line**; 233/249 achieved = decode denominator; 31.5 TF = bug line + WMMA headroom; **16.0 TF CUDA-core** added as the real prefill denominator for the shipped non-WMMA kernels. *(This row is where the 16.0 TF entered the docs — clock-**derived**, never microbenched — **superseded by item 12: the measured achievable CUDA-core GEMM is 10.10 TF; 16.0 was optimistic by 1.55×.** The note below this table is about exactly this row.)* |
 | 3 | ROOFLINE §4 | ridge 135 presented as *the* ridge | 135 is the **tensor-core** ridge; the shipped CUDA-core kernels face their own. *(This row first said "≈69" from the assumed 16.0 TF — **superseded by item 12: the measured ridge is 43.**)* |
 | 4 | ROOFLINE §3 | "achieved BW ~200 GB/s" (pre-measurement estimate) | recomputed at the measured 233.4 → realistic fp16 decode ≈ 515–750 tok/s |
 | 5 | ROOFLINE §6 | ceilings divided by a rounded 248 MB | footnote: exact is 248.9 MB → fp16 938/1000/1029; published figures are ~0.3–0.4% **optimistic** (bug line slightly permissive, never falsely tripping). Quoted values kept so committed blocks stay consistent |
-| 6 | ROOFLINE §5 | director map rows 3a/3b/4 unannotated vs their measured outcomes | annotation added (3b confirmed; 3a falsified+reverted; **row 4 "high decode payoff" = untested, not refuted**) |
+| 6 | ROOFLINE §5 | director map rows 3a/3b/4 unannotated vs their measured outcomes | annotation added (3b confirmed; 3a falsified+reverted; **row 4 "high decode payoff" = untested, not refuted**). *(That row-4 verdict was correct **as of Stage 4**, when true M=1 decode did not yet exist — **superseded by Stage 5, which made it testable and REFUTED it for this model/build: INT8 at true M=1 buys 1.02–1.16×, bounded at 1.278× by the fp16 tied head the quality gate requires.** Row 3a's "still OPEN for M=1 decode" is likewise now **CLOSED** — see DESIGN §5 / ROOFLINE §5.)* |
 | 7 | QUALITY_GATES §2 | "sanity anchor ≈29–30" fires falsely against our measured 25.57 | stride caveat recorded: anchor is a stride=1024 figure (30.18); the gate is stride=512 (25.57). Same harness, both run |
 | 8 | QUALITY_GATES §2/§3 | kill-test + the 2 knobs written as still-to-do | knobs marked FROZEN (Phase 0, pre-Stage-4); kill-test marked EXECUTED with its measured outcome |
 | 9 | DESIGN.md §3 G1/G2/G3/G7 | 4 open `[VERIFY]` tags; "SmolLM **or** GPT-2"; "~270 MB → ~950 tok/s" placeholder | model LOCKED = GPT-2-124M (124,439,808 params → 248.9 MB); tags discharged to `[VERIFIED]` with the measured values |

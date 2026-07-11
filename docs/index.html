@@ -8,7 +8,11 @@
 <link rel="stylesheet" href="style.css">
 <!-- NOTE (owner): repo URL below is a placeholder — no git remote is configured yet.
      Search/replace "github.com/phannhan/engine" if the repo lands elsewhere.
-     Links use /blob/HEAD/ so they work on any default branch. -->
+     Links use /blob/HEAD/ so they work on any default branch.
+
+     NOTE (owner): the hero has a slot for a terminal GIF — a real decode run with a live
+     tok/s counter. Drop docs/decode.gif in and replace the .placeholder block marked
+     "TERMINAL GIF SLOT" with the <img> tag written inside that comment. -->
 </head>
 <body>
 
@@ -26,27 +30,13 @@
 
 <main>
 
-<section>
-  <h2>Abstract</h2>
-  <p>
-    A single-model, forward-inference-only engine for GPT-2-124M: first a pure-C fp32 forward pass with no
-    dependencies, then a CUDA port, then five stages of optimization applied one at a time. Every stage is
-    gated against a HuggingFace reference before it is timed, every number is checked against a roofline
-    ceiling measured on the actual GPU, and every stage that failed to pay for itself is still in the
-    repository, with the measurement that killed it.
-  </p>
-  <p>
-    There is no novelty claim. The claim is that the numbers are true, and that each one can be traced to
-    where it came from.
-  </p>
-</section>
-
+<!-- ============================== HERO ============================== -->
 <section>
   <h2>Where it lands</h2>
   <p class="note">
     Same GPU, same weights, same session, matched precision, medians (never best-of-N). Decode is true M=1
-    in all three engines. PyTorch prefill is measured on the transformer trunk only, because HF's
-    <code>model(ids)</code> also runs the LM head over all P positions and this engine does not.
+    in all three engines, so it is like-for-like. PyTorch prefill is measured on the transformer trunk only,
+    because HF's <code>model(ids)</code> also runs the LM head over all P positions and this engine does not.
   </p>
 
   <div class="tablewrap">
@@ -69,9 +59,407 @@
     slower than llama.cpp.</strong>
   </p>
 
+  <p class="claim">The claim is that the numbers are true.</p>
+
+  <!-- ============================================================
+       TERMINAL GIF SLOT (owner) — a real decode run with a live tok/s counter.
+       Replace this whole .placeholder div with:
+         <img src="decode.gif" alt="Terminal: greedy decode with a live tok/s counter" width="100%">
+       ============================================================ -->
+  <div class="placeholder">
+    <strong>Terminal GIF slot</strong>
+    <span>A real decode run, live tok/s counter. Drop <code>docs/decode.gif</code> here and swap this block
+    for the <code>&lt;img&gt;</code> tag in the comment above it.</span>
+  </div>
+</section>
+
+<!-- ============================== THE LADDER ============================== -->
+<section>
+  <h2>The ladder</h2>
   <p>
-    llama.cpp is faster, and the gap is worth explaining rather than burying. At P=512 the 14.44×
-    decomposes into two measured factors:
+    Each stage changes one thing, re-passes the correctness gates, then is timed against the previous stage
+    back-to-back on the same thermal state. A stage that doesn't earn its keep is reverted. Two axes, because
+    prefill and decode are different regimes and blending them into a single "tok/s" is how benchmarks lie.
+  </p>
+
+  <div class="legend">
+    <span><i class="k-prefill"></i> prefill @ P=512 — latency, lower is better</span>
+    <span><i class="k-decode"></i> decode — throughput, higher is better</span>
+  </div>
+
+  <figure>
+    <div class="figwrap">
+    <svg viewBox="0 0 720 580" role="img"
+         aria-label="Two stacked log-scale panels sharing one stage axis. Prefill at P=512 falls from 3347 ms in pure C to 107 ms by stage 5. Decode rises from 1.6 to 46.7 tok/s across stages 0 to 4 as a no-KV recompute, then breaks to a different quantity — true M=1 decode at 511.7 tok/s — when the KV cache lands at stage 5.">
+
+      <!-- ---------- PANEL A: prefill (log ms) ---------- -->
+      <text class="lab" x="64" y="18" font-weight="600">prefill @ P=512 — latency (ms), log scale</text>
+      <text class="lab-sm" x="64" y="33">lower is better · 3347 ms (CPU) → 107 ms</text>
+
+      <!-- gridlines + ticks (baseline y=264, plot height 210) -->
+      <line class="grid" x1="64" y1="69.5"  x2="704" y2="69.5"></line>
+      <line class="grid" x1="64" y1="128.4" x2="704" y2="128.4"></line>
+      <line class="grid" x1="64" y1="193.1" x2="704" y2="193.1"></line>
+      <line class="grid" x1="64" y1="252.0" x2="704" y2="252.0"></line>
+      <text class="lab-sm mono" x="56" y="73.5"  text-anchor="end">3000</text>
+      <text class="lab-sm mono" x="56" y="132.4" text-anchor="end">1000</text>
+      <text class="lab-sm mono" x="56" y="197.1" text-anchor="end">300</text>
+      <text class="lab-sm mono" x="56" y="256.0" text-anchor="end">100</text>
+      <line class="axis" x1="64" y1="264" x2="704" y2="264"></line>
+
+      <!-- bars: baseline y=264 -->
+      <rect class="s-prefill" x="87.3"  y="63.3"  width="60" height="200.7" rx="3"></rect>
+      <rect class="s-prefill" x="194.0" y="137.5" width="60" height="126.5" rx="3"></rect>
+      <rect class="s-prefill" x="300.7" y="219.0" width="60" height="45.0"  rx="3"></rect>
+      <rect class="s-prefill" x="407.3" y="248.0" width="60" height="16.0"  rx="3"></rect>
+      <rect class="s-prefill" x="514.0" y="248.1" width="60" height="15.9"  rx="3"></rect>
+      <rect class="s-prefill" x="620.7" y="248.1" width="60" height="15.9"  rx="3"></rect>
+
+      <!-- direct labels -->
+      <text class="lab-val mono" x="117.3" y="56"  text-anchor="middle">3347</text>
+      <text class="lab-val mono" x="224.0" y="130" text-anchor="middle">840.0</text>
+      <text class="lab-val mono" x="330.7" y="212" text-anchor="middle">184.8</text>
+      <text class="lab-val mono" x="437.3" y="241" text-anchor="middle">107.3</text>
+      <text class="lab-val mono" x="544.0" y="241" text-anchor="middle">107.1</text>
+      <text class="lab-val mono" x="650.7" y="241" text-anchor="middle">107.1</text>
+
+      <!-- step factors -->
+      <text class="lab-sm" x="224.0" y="280" text-anchor="middle">port, no claim</text>
+      <text class="lab-sm" x="330.7" y="280" text-anchor="middle">4.55×</text>
+      <text class="lab-sm" x="437.3" y="280" text-anchor="middle">1.72×</text>
+      <text class="lab-sm" x="544.0" y="280" text-anchor="middle">1.00×</text>
+      <text class="lab-sm" x="650.7" y="280" text-anchor="middle">—</text>
+
+      <!-- ---------- PANEL B: decode (log tok/s) ---------- -->
+      <text class="lab" x="64" y="303" font-weight="600">decode — throughput (tok/s), log scale</text>
+      <text class="lab-sm" x="64" y="318">higher is better · the series changes quantity at stage 5 — see the break</text>
+
+      <line class="grid" x1="64" y1="385.3" x2="704" y2="385.3"></line>
+      <line class="grid" x1="64" y1="457.7" x2="704" y2="457.7"></line>
+      <text class="lab-sm mono" x="56" y="389.3" text-anchor="end">100</text>
+      <text class="lab-sm mono" x="56" y="461.7" text-anchor="end">10</text>
+      <text class="lab-sm mono" x="56" y="534"   text-anchor="end">1</text>
+      <line class="axis" x1="64" y1="530" x2="704" y2="530"></line>
+
+      <!-- no-KV recompute series, stages 0-4 -->
+      <path class="l-decode" d="M117.3,515.2 L224.0,470.2 L330.7,417.3 L437.3,409.2 L544.0,409.0"></path>
+      <circle class="s-decode ring" cx="117.3" cy="515.2" r="5"></circle>
+      <circle class="s-decode ring" cx="224.0" cy="470.2" r="5"></circle>
+      <circle class="s-decode ring" cx="330.7" cy="417.3" r="5"></circle>
+      <circle class="s-decode ring" cx="437.3" cy="409.2" r="5"></circle>
+      <circle class="s-decode ring" cx="544.0" cy="409.0" r="5"></circle>
+
+      <text class="lab-val mono s-decode" x="117.3" y="507" text-anchor="middle">1.6</text>
+      <text class="lab-val mono s-decode" x="224.0" y="462" text-anchor="middle">6.7</text>
+      <text class="lab-val mono s-decode" x="330.7" y="409" text-anchor="middle">36.1</text>
+      <text class="lab-val mono s-decode" x="437.3" y="401" text-anchor="middle">46.7</text>
+      <text class="lab-val mono s-decode" x="544.0" y="401" text-anchor="middle">47.0</text>
+
+      <!-- THE BREAK: the quantity itself changes here -->
+      <line class="rule" x1="597.3" y1="330" x2="597.3" y2="530"></line>
+      <line class="rule" x1="597.3" y1="54"  x2="597.3" y2="264"></line>
+      <path d="M590,392 l10,-14 M598,392 l10,-14" stroke="currentColor" stroke-width="2" fill="none" opacity="0.55"></path>
+      <text class="lab-sm" x="592" y="352" text-anchor="end">no-KV recompute (M≫1)</text>
+      <text class="lab-sm" x="592" y="366" text-anchor="end">ctx sweeps 34→155</text>
+      <text class="lab-sm" x="603" y="352">true M=1 decode</text>
+      <text class="lab-sm" x="603" y="366">@ ctx=128</text>
+
+      <!-- stage 5: the true M=1 point -->
+      <circle class="s-decode ring" cx="650.7" cy="334.0" r="7"></circle>
+      <text class="lab-val mono s-decode" x="650.7" y="326" text-anchor="middle">511.7</text>
+      <text class="lab-sm"  x="70" y="350">KV cache + true M=1 GEMV:</text>
+      <text class="lab-val" x="70" y="368">14.7–98.3× over no-KV recompute</text>
+
+      <!-- ---------- shared stage axis ---------- -->
+      <text class="lab" x="117.3" y="551" text-anchor="middle">0</text>
+      <text class="lab" x="224.0" y="551" text-anchor="middle">1</text>
+      <text class="lab" x="330.7" y="551" text-anchor="middle">2</text>
+      <text class="lab" x="437.3" y="551" text-anchor="middle">3b</text>
+      <text class="lab" x="544.0" y="551" text-anchor="middle">4</text>
+      <text class="lab" x="650.7" y="551" text-anchor="middle">5</text>
+      <text class="lab-sm" x="117.3" y="567" text-anchor="middle">pure C</text>
+      <text class="lab-sm" x="224.0" y="567" text-anchor="middle">naive CUDA</text>
+      <text class="lab-sm" x="330.7" y="567" text-anchor="middle">tiled GEMM</text>
+      <text class="lab-sm" x="437.3" y="567" text-anchor="middle">flash attn</text>
+      <text class="lab-sm" x="544.0" y="567" text-anchor="middle">INT8</text>
+      <text class="lab-sm" x="650.7" y="567" text-anchor="middle">KV + GEMV</text>
+    </svg>
+    </div>
+    <figcaption>
+      <b>The break is the point.</b> Before stage 5 this engine has no KV cache, so the "decode" harness
+      full-recomputes the whole sequence every step: its GEMMs run at M = context length, not M = 1. That is
+      prefill in disguise, which is why stage 2's tiled GEMM appears to make decode 5.4× faster. The win was
+      real and the label was wrong. Those cells are a per-token median over a generation sweeping ctx 34→155,
+      not a stated ctx — a true M=1 decode does not exist here until the cache lands. The stage-5 point is a
+      different quantity, so the series does not connect to it. Stage 3a (fused LayerNorm) is absent from
+      both axes because it was measured and reverted.
+      <br><br>
+      Sources: <a href="https://github.com/phannhan/engine/blob/HEAD/BENCHMARKS.md">BENCHMARKS.md</a>
+      Table 2 and the per-stage blocks. Stage 0 is CPU (AMD Ryzen 7 7840H), included as the from-scratch
+      baseline and not roofline-checked against GPU ceilings.
+    </figcaption>
+  </figure>
+
+  <details class="tableview">
+    <summary>Table view (the same numbers, as text)</summary>
+    <div class="tablewrap">
+    <table>
+      <thead><tr><th>Stage</th><th>What it adds</th><th>prefill @512</th><th>decode</th><th>note</th></tr></thead>
+      <tbody>
+        <tr><td>0</td><td>pure-C fp32 reference</td><td>3347 ms</td><td>~1.6 tok/s <span class="dim">(no-KV, ctx 33→155)</span></td><td>correctness oracle; CPU</td></tr>
+        <tr><td>1</td><td>naive CUDA fp16</td><td>840.0 ms</td><td>6.7 tok/s <span class="dim">(no-KV, ctx 34→155)</span></td><td>GPU baseline</td></tr>
+        <tr><td>2</td><td>tiled shared-memory GEMM</td><td>184.8 ms <b>(4.55×)</b></td><td>36.1 tok/s <span class="dim">(no-KV, ctx 34→155)</span></td><td>that "decode" win is GEMM reuse, not decode</td></tr>
+        <tr><td>3b</td><td>flash attention</td><td>107.3 ms <b>(1.72×)</b></td><td>46.7 tok/s <span class="dim">(no-KV, ctx 34→155)</span></td><td>attention 44.8% → 5.3% of prefill</td></tr>
+        <tr class="reverted"><td>3a</td><td>fused LayerNorm + matmul</td><td>—</td><td>—</td><td><b>reverted</b>: 2.9% slowdown, above noise</td></tr>
+        <tr><td>4</td><td>weight-only INT8</td><td>107.1 ms (1.00×)</td><td>47.0 tok/s <span class="dim">(no-KV, unmoved)</span></td><td>both gates pass via kill-test; <b>zero speedup</b></td></tr>
+        <tr><td>5</td><td>KV cache + true M=1 GEMV</td><td>107.1 ms</td><td><b>511.7 tok/s</b> @ctx=128</td><td><b>14.7–98.3×</b> over no-KV recompute</td></tr>
+      </tbody>
+    </table>
+    </div>
+  </details>
+</section>
+
+<!-- ============================== THREE STORIES ============================== -->
+<section>
+  <h2>Three things that went wrong, and what they cost to find out</h2>
+
+  <!-- ---- (a) ---- -->
+  <h3>INT8 halved the bytes and bought exactly 1.00×</h3>
+  <p>
+    Weight-only INT8 halves the bytes of 48 matmuls. It bought <b>1.00×</b> — at every shape, ranges
+    overlapping. Rather than tune something, two predictions were written down, each of which would kill the
+    other. If the M=1 tied-head GEMV were <em>bandwidth</em>-bound, halving its bytes gives ~2×. If it were
+    <em>compute</em>-bound on work it discards, then M=1 and M=16 must cost the same — because the 16×16 tile
+    computes sixteen output rows either way and masks fifteen at the write. Measured: <b>1.002×</b>
+    (rejected), and <b>1.4351 ms vs 1.4346 ms</b> (confirmed). At M=1 the kernel runs at 860.6 GFLOP/s —
+    98.8% of <em>its own</em> M=512 throughput — while pulling 23% of achieved bandwidth. Fewer bytes cannot
+    help a kernel that is not waiting on bytes. Nsight later put it in a counter: at the head shape the tiled
+    GEMM is <b>2.00× slower</b> than the naive one, off identical DRAM traffic.
+  </p>
+
+  <figure>
+    <div class="figwrap">
+    <svg viewBox="0 0 720 290" role="img"
+         aria-label="A 16 by 16 tile. One of the sixteen output rows is highlighted; the other fifteen are greyed out, showing that at M=1 the tile computes sixteen rows and discards fifteen at the write.">
+      <text class="lab" x="20" y="20" font-weight="600">the 16×16 tile at M=1</text>
+
+      <!-- the single activation row -->
+      <text class="lab-sm" x="20" y="52">A (activations)</text>
+      <text class="lab-sm" x="20" y="67">M = 1 → one row</text>
+      <rect x="20" y="80" width="140" height="12" rx="3" class="s-prefill"></rect>
+      <text class="lab-sm" x="20" y="110">the only row that</text>
+      <text class="lab-sm" x="20" y="124">will be written</text>
+
+      <!-- the tile: 16x16, cell 12 -->
+      <g>
+        <!-- row 0: kept -->
+        <g>
+          <rect x="280" y="50" width="192" height="12" fill="var(--tile-on)"></rect>
+        </g>
+        <!-- rows 1..15: discarded -->
+        <rect x="280" y="62"  width="192" height="180" fill="var(--tile-off)"></rect>
+        <!-- cell grid -->
+        <g stroke="var(--bg)" stroke-width="1">
+          <line x1="292" y1="50" x2="292" y2="242"></line><line x1="304" y1="50" x2="304" y2="242"></line>
+          <line x1="316" y1="50" x2="316" y2="242"></line><line x1="328" y1="50" x2="328" y2="242"></line>
+          <line x1="340" y1="50" x2="340" y2="242"></line><line x1="352" y1="50" x2="352" y2="242"></line>
+          <line x1="364" y1="50" x2="364" y2="242"></line><line x1="376" y1="50" x2="376" y2="242"></line>
+          <line x1="388" y1="50" x2="388" y2="242"></line><line x1="400" y1="50" x2="400" y2="242"></line>
+          <line x1="412" y1="50" x2="412" y2="242"></line><line x1="424" y1="50" x2="424" y2="242"></line>
+          <line x1="436" y1="50" x2="436" y2="242"></line><line x1="448" y1="50" x2="448" y2="242"></line>
+          <line x1="460" y1="50" x2="460" y2="242"></line>
+          <line x1="280" y1="62"  x2="472" y2="62"></line><line x1="280" y1="74"  x2="472" y2="74"></line>
+          <line x1="280" y1="86"  x2="472" y2="86"></line><line x1="280" y1="98"  x2="472" y2="98"></line>
+          <line x1="280" y1="110" x2="472" y2="110"></line><line x1="280" y1="122" x2="472" y2="122"></line>
+          <line x1="280" y1="134" x2="472" y2="134"></line><line x1="280" y1="146" x2="472" y2="146"></line>
+          <line x1="280" y1="158" x2="472" y2="158"></line><line x1="280" y1="170" x2="472" y2="170"></line>
+          <line x1="280" y1="182" x2="472" y2="182"></line><line x1="280" y1="194" x2="472" y2="194"></line>
+          <line x1="280" y1="206" x2="472" y2="206"></line><line x1="280" y1="218" x2="472" y2="218"></line>
+          <line x1="280" y1="230" x2="472" y2="230"></line>
+        </g>
+        <rect x="280" y="50" width="192" height="192" fill="none" stroke="var(--line)" stroke-width="1"></rect>
+      </g>
+
+      <!-- annotations -->
+      <path d="M164,86 L274,56" class="rule" fill="none"></path>
+      <text class="lab-val" x="490" y="60">1 row written</text>
+      <path d="M478,56 L486,56" class="axis"></path>
+
+      <path d="M478,152 L490,152" class="axis"></path>
+      <text class="lab-val" x="496" y="140">15 rows computed,</text>
+      <text class="lab-val" x="496" y="156">then discarded</text>
+      <text class="lab-sm"  x="496" y="176">the tile burns 16× the</text>
+      <text class="lab-sm"  x="496" y="190">FLOPs it can use</text>
+
+      <text class="lab mono" x="20" y="268">head M=1  1.4351 ms   ≡   head M=16  1.4346 ms</text>
+      <text class="lab-sm" x="20" y="284">same arithmetic, half the bytes, same time — so halving the bytes cannot show up</text>
+    </svg>
+    </div>
+    <figcaption>
+      Source: <a href="https://github.com/phannhan/engine/blob/HEAD/BENCHMARKS.md">BENCHMARKS.md</a>
+      Stage 4 (the two predictions and the M=1 ≡ M=16 result) and the ncu section (naive 962.72 µs vs tiled
+      1927.52 µs at the head shape, both reading 77.30 MB). This is what forced stage 5 to ship a dedicated
+      M=1 GEMV alongside the cache: a KV cache alone could not have surfaced the INT8 win.
+    </figcaption>
+  </figure>
+
+  <!-- ---- (b) ---- -->
+  <h3>The fusion that was correct, and 2.9% slower</h3>
+  <p>
+    Stage 3a fused LayerNorm into the matmul that consumes it, removing one <code>[T,E]</code> activation
+    round-trip to global memory. It is <em>correct</em> — gate (a) came back bit-identical to the unfused
+    kernel — and it is <b>2.9% slower</b>: 0.971× at three separate shapes, with disjoint min/max ranges, so
+    it is not noise. The mechanism is in the consumer, not the fusion. The tiled GEMM re-stages each A tile
+    once per <em>column</em> tile — 144 times for the QKV shape, 192 for the FC. The fused kernel
+    re-normalizes on every staging. So it recomputes the LayerNorm 144× in order to save a single 0.79 MB
+    write worth about 3.4 µs, while the separate kernel normalizes each element exactly once. A fusion pays
+    only when the producer's output is consumed <em>once</em>, and a tiled GEMM consumes its input 144 times.
+    Reverted. The kernel survives in git history; the measurement that killed it is in the ledger.
+  </p>
+
+  <figure>
+    <div class="figwrap">
+    <svg viewBox="0 0 720 240" role="img"
+         aria-label="One A tile feeding 144 column tiles. Each column tile re-stages the same A tile, so a fused LayerNorm re-normalizes it 144 times, while the separate LayerNorm kernel normalizes it once.">
+      <text class="lab" x="20" y="20" font-weight="600">why the fusion loses: the consumer re-reads its input</text>
+
+      <!-- A tile -->
+      <rect x="20" y="70" width="96" height="64" rx="4" class="s-prefill"></rect>
+      <text class="lab-sm" x="20" y="60">A tile (16 rows)</text>
+      <text class="lab-sm" x="20" y="152">separate LN:</text>
+      <text class="lab-val" x="20" y="168">normalized once</text>
+
+      <!-- fan-out arrows -->
+      <path d="M116,102 L168,80"  class="rule" fill="none"></path>
+      <path d="M116,102 L168,102" class="rule" fill="none"></path>
+      <path d="M116,102 L168,124" class="rule" fill="none"></path>
+
+      <!-- column tiles -->
+      <g class="s-prefill" opacity="0.55">
+        <rect x="176" y="70" width="14" height="64" rx="3"></rect>
+        <rect x="196" y="70" width="14" height="64" rx="3"></rect>
+        <rect x="216" y="70" width="14" height="64" rx="3"></rect>
+        <rect x="236" y="70" width="14" height="64" rx="3"></rect>
+        <rect x="256" y="70" width="14" height="64" rx="3"></rect>
+        <rect x="276" y="70" width="14" height="64" rx="3"></rect>
+        <rect x="296" y="70" width="14" height="64" rx="3"></rect>
+        <rect x="316" y="70" width="14" height="64" rx="3"></rect>
+        <rect x="336" y="70" width="14" height="64" rx="3"></rect>
+        <rect x="356" y="70" width="14" height="64" rx="3"></rect>
+        <rect x="376" y="70" width="14" height="64" rx="3"></rect>
+        <rect x="396" y="70" width="14" height="64" rx="3"></rect>
+        <rect x="416" y="70" width="14" height="64" rx="3"></rect>
+        <rect x="436" y="70" width="14" height="64" rx="3"></rect>
+        <rect x="456" y="70" width="14" height="64" rx="3"></rect>
+        <rect x="476" y="70" width="14" height="64" rx="3"></rect>
+        <rect x="556" y="70" width="14" height="64" rx="3"></rect>
+        <rect x="576" y="70" width="14" height="64" rx="3"></rect>
+        <rect x="596" y="70" width="14" height="64" rx="3"></rect>
+        <rect x="616" y="70" width="14" height="64" rx="3"></rect>
+      </g>
+      <text class="lab mono" x="516" y="108" text-anchor="middle">…</text>
+
+      <!-- brace + count -->
+      <path d="M176,144 L176,152 L630,152 L630,144" class="axis" fill="none"></path>
+      <text class="lab-val" x="403" y="170" text-anchor="middle">144 column tiles (QKV) · 192 (FC)</text>
+      <text class="lab-sm"  x="403" y="188" text-anchor="middle">each one re-stages the same A tile — the fused kernel re-normalizes it every time</text>
+
+      <text class="lab mono" x="20" y="220">saves: one 0.79 MB write ≈ 3.4 µs   ·   costs: 144 re-normalizations   ·   net: 0.971×</text>
+      <text class="lab-sm" x="20" y="236">measured at three shapes, min/max ranges disjoint — an above-noise slowdown, not a wash</text>
+    </svg>
+    </div>
+    <figcaption>
+      Source: <a href="https://github.com/phannhan/engine/blob/HEAD/BENCHMARKS.md">BENCHMARKS.md</a>
+      Stage 3a, including the control (isolated attention 1.000× / 0.998× / 1.007×, ranges overlapping — so
+      the 2.9% is attributable to the fusion and nothing else moved). The pre-registered expectation, written
+      down <em>before</em> measuring, was "unresolvable, or a small loss": LayerNorm is 0.28% of prefill@512,
+      so the Amdahl ceiling was under 1% either way.
+    </figcaption>
+  </figure>
+
+  <!-- ---- (c) ---- -->
+  <h3>The denominator I derived from a clock, and had to retract</h3>
+  <p>
+    For several stages the CUDA-core compute ceiling was <em>derived from the clock</em> — 24 SM × 128 lanes
+    × 2 × 2.61 GHz = <b>16.0 TFLOP/s</b> — and then used as the denominator for "% of roofline". The
+    project's own rule says microbench, don't assume. Measured, the achievable non-tensor GEMM is
+    <b>10.10 TFLOP/s</b>: the assumption was optimistic by <b>1.55×</b>, and the ridge point it implied (≈69)
+    was simply wrong. The real one is 43.3. Labelling a number "derived, not measured" does not license using
+    it as a measurement.
+  </p>
+  <p>
+    Then the GPU handed over the proof, by accident. A pre-release re-run came back 36% slow: the card had
+    sat at <b>1920 MHz</b> all session instead of 2610. Every <em>compute</em> peak scaled by the clock ratio
+    <b>0.7356</b>. Neither <em>memory</em> peak moved at all. Prefill, multiplied by that single ratio, lands
+    back on the ledger at every rung of the ladder, within 0.21%. The true M=1 decode step barely notices.
+    And prefill efficiency turns out to be clock-invariant — 8.45% at 1920 MHz, 8.48% at 2610 — which is what
+    a denominator does, and what a guess does not.
+  </p>
+
+  <figure>
+    <div class="figwrap">
+    <svg viewBox="0 0 720 300" role="img"
+         aria-label="Dot plot of measured-peak ratios when the GPU core clock dropped to 0.7356 of nominal. All five compute peaks land on the clock ratio; both memory bandwidth peaks stay at 1.0, unmoved.">
+      <text class="lab" x="20" y="18" font-weight="600">a 26% core-clock cut, and what it moved</text>
+      <text class="lab-sm" x="20" y="34">measured peak at 1920 MHz ÷ measured peak at 2610 MHz</text>
+
+      <!-- reference rules -->
+      <line class="rule" x1="204.9" y1="48" x2="204.9" y2="196"></line>
+      <line class="rule" x1="612.9" y1="208" x2="612.9" y2="268"></line>
+      <text class="lab-sm" x="204.9" y="46" text-anchor="middle">clock ratio 0.7356</text>
+      <text class="lab-sm" x="612.9" y="206" text-anchor="middle">1.000 — unmoved</text>
+
+      <!-- axis -->
+      <line class="axis" x1="150" y1="278" x2="690" y2="278"></line>
+      <text class="lab-sm mono" x="150"   y="293" text-anchor="middle">0.70</text>
+      <text class="lab-sm mono" x="304.3" y="293" text-anchor="middle">0.80</text>
+      <text class="lab-sm mono" x="458.6" y="293" text-anchor="middle">0.90</text>
+      <text class="lab-sm mono" x="612.9" y="293" text-anchor="middle">1.00</text>
+
+      <!-- COMPUTE peaks (must scale with clock) -->
+      <text class="lab-sm" x="140" y="64"  text-anchor="end">tensor GEMM, fp32-acc</text>
+      <text class="lab-sm" x="140" y="94"  text-anchor="end">tensor GEMM, fp16-acc</text>
+      <text class="lab-sm" x="140" y="124" text-anchor="end">CUDA-core FMA pipe</text>
+      <text class="lab-sm" x="140" y="154" text-anchor="end">CUDA-core GEMM</text>
+      <text class="lab-sm" x="140" y="184" text-anchor="end">CUDA-core SGEMM</text>
+      <circle class="s-prefill ring" cx="207.4" cy="60"  r="6"></circle>
+      <circle class="s-prefill ring" cx="218.3" cy="90"  r="6"></circle>
+      <circle class="s-prefill ring" cx="205.4" cy="120" r="6"></circle>
+      <circle class="s-prefill ring" cx="211.1" cy="150" r="6"></circle>
+      <circle class="s-prefill ring" cx="225.9" cy="180" r="6"></circle>
+      <text class="lab-val mono" x="240" y="64">0.7372</text>
+      <text class="lab-val mono" x="240" y="94">0.7443</text>
+      <text class="lab-val mono" x="240" y="124">0.7359</text>
+      <text class="lab-val mono" x="240" y="154">0.7396</text>
+      <text class="lab-val mono" x="240" y="184">0.7492</text>
+
+      <!-- MEMORY peaks (must NOT scale with clock) -->
+      <text class="lab-sm" x="140" y="228" text-anchor="end">copy BW (2N r+w)</text>
+      <text class="lab-sm" x="140" y="258" text-anchor="end">read BW (1N)</text>
+      <circle class="s-decode ring" cx="611.4" cy="224" r="6"></circle>
+      <circle class="s-decode ring" cx="614.0" cy="254" r="6"></circle>
+      <text class="lab-val mono" x="628" y="228">0.9991</text>
+      <text class="lab-val mono" x="628" y="258">1.0008</text>
+    </svg>
+    </div>
+    <figcaption>
+      <b>The roofline said this before any kernel existed:</b> "GDDR6 clock is set by the memory chips, not
+      by TGP — expect the power limit to cost prefill FLOP/s, not decode tok/s." A clock nobody chose then
+      tested it. Compute ceilings scaled; memory ceilings did not; and the engine's own timings split along
+      the same seam — prefill down 36%, the M=1 decode step down 2–12%, the head GEMV (pure DRAM) identical
+      to the microsecond. Source:
+      <a href="https://github.com/phannhan/engine/blob/HEAD/BENCHMARKS.md">BENCHMARKS.md</a>,
+      "Pre-public audit" §2. It revises no recorded number: every block states the clock it was measured at.
+    </figcaption>
+  </figure>
+</section>
+
+<!-- ============================== THE GAP ============================== -->
+<section>
+  <h2>The gap, decomposed</h2>
+  <p>
+    llama.cpp is faster. The deliverable is not the ratio, it is the <em>characterised</em> ratio — so here is
+    where all of it goes. At P=512 the <b>14.44×</b> prefill gap factors into two measured terms:
   </p>
 
 <pre><code>14.44x  =  3.12x   tensor cores (WMMA)
@@ -81,148 +469,73 @@
                    llama.cpp reaches 39.3% of its ceiling; this engine reaches 8.5% of its own</code></pre>
 
   <p>
-    The first factor is a ceiling this engine cannot reach, because it uses no tensor cores — a scope
-    decision, not an oversight. It is the ratio of two independently microbenchmarked peaks. The second is
-    the distance between a textbook 16×16 shared-memory tile and a register-tiled, double-buffered,
-    vectorized GEMM; it is the residual, and it equals the ratio of how much of its own ceiling each engine
-    reaches. Together the two measured factors account for the full gap.
+    <b>Be precise about what each term is.</b> Only the first is an independent measurement: it is the ratio
+    of two separately microbenchmarked peaks (<a href="https://github.com/phannhan/engine/blob/HEAD/ROOFLINE.md">ROOFLINE.md</a>
+    §6 and §6b). It is a ceiling this engine <em>cannot</em> reach, because it uses no tensor cores — a scope
+    decision, not an oversight. The second is the <b>residual</b>, gap ÷ 3.12×, which happens to equal the
+    ratio of how much of its own ceiling each engine reaches. So <code>3.12 × 4.63 = 14.44</code> is an
+    identity, not a prediction that came true. What the partition buys is the split itself: how much of the
+    gap is a ceiling that was never in scope, versus how much is kernel quality inside the ceiling that was.
+    The second term is the distance between a textbook 16×16 shared-memory tile and a register-tiled,
+    double-buffered, vectorized GEMM.
   </p>
   <p>
-    Fusion is not part of the answer. Attention is 5.3% of prefill after Stage 3b, and the ~123 kernel
-    launches in a prefill forward cost a small fraction of it, well under 1% — the per-op profile's
-    sum-of-parts lands within 0.7% of the uninstrumented forward, which bounds the per-kernel overhead
-    from above.
+    <b>Fusion is not part of the prefill answer</b>, and it is worth saying because it is the usual guess.
+    Attention is 5.3% of prefill after stage 3b, and the ~123 kernel launches in a prefill forward cost well
+    under 1% of a 107 ms forward — bounded from above by the per-op profile's sum-of-parts landing within
+    0.7% of the uninstrumented forward. Nothing else is large enough to matter.
   </p>
-  <p>
-    One number is worth reading twice: PyTorch eager's trunk prefill is <strong>9.441 ms at P=128 and
-    9.395 ms at P=512</strong> — identical, for four times the work. It is host-dispatch-bound at this model
-    size, which is why beating it on decode is table stakes and llama.cpp is the only baseline that says
-    anything.
-  </p>
-</section>
 
-<section>
-  <h2>The ladder</h2>
-  <p class="note">
-    Each stage changes one thing, re-passes the correctness gates, then is timed against the previous stage
-    back-to-back on the same thermal state. A stage that doesn't earn its keep is reverted.
-    <em>Decode before Stage 5 is a no-KV full recompute (M≫1, prefill-shaped) — a true M=1 decode does not
-    exist in this engine until the KV cache lands.</em>
+  <h3>Decode: 1.24× at ctx=128, 1.31× at ctx=1023</h3>
+  <p>
+    The decode gap is small and it is <em>not</em> bandwidth. Measured on the same basis — weight bytes per
+    token — this engine achieves <b>127.4 GB/s (54.6% of copy bandwidth)</b> and llama.cpp achieves
+    <b>159.6 GB/s (68.4%)</b>. Both are far from the bus. The roofline said decode was memory-bound; at this
+    model size, on this GPU, what it actually waits on is <em>kernel launches</em>. At ctx=1023 the gap splits:
   </p>
 
   <div class="tablewrap">
   <table>
-    <thead><tr><th>Stage</th><th>What it adds</th><th>prefill @512</th><th>decode</th><th>note</th></tr></thead>
+    <thead><tr><th>component of the ctx=1023 decode gap</th><th>cost</th><th>share</th><th>why</th></tr></thead>
     <tbody>
-      <tr><td>0</td><td>pure-C fp32 reference</td><td>3347 ms</td><td>~1.6 tok/s <span class="dim">(no-KV)</span></td><td>correctness oracle; CPU</td></tr>
-      <tr><td>1</td><td>naive CUDA fp16</td><td>840.0 ms</td><td>6.7 tok/s <span class="dim">(no-KV)</span></td><td>GPU baseline</td></tr>
-      <tr><td>2</td><td>tiled shared-memory GEMM</td><td>184.8 ms <b>(4.55×)</b></td><td>36.1 tok/s <span class="dim">(no-KV)</span></td><td>that "decode" win is GEMM reuse, not decode</td></tr>
-      <tr><td>3b</td><td>flash attention</td><td>107.3 ms <b>(1.72×)</b></td><td>46.7 tok/s <span class="dim">(no-KV)</span></td><td>attention 44.8% → 5.3% of prefill</td></tr>
-      <tr class="reverted"><td>3a</td><td>fused LayerNorm + matmul</td><td>—</td><td>—</td><td><b>reverted</b>: 2.9% slowdown, above noise</td></tr>
-      <tr><td>4</td><td>weight-only INT8</td><td>107.1 ms (1.00×)</td><td>—</td><td>both gates pass via kill-test; <b>zero speedup</b></td></tr>
-      <tr><td>5</td><td>KV cache + true M=1 GEMV</td><td>107.1 ms</td><td><b>511.7 tok/s</b> @ctx=128</td><td><b>14.7–98.3×</b> over no-KV recompute</td></tr>
+      <tr><td>fixed per-step overhead</td><td>0.3831 ms</td><td class="best">73%</td><td>our step is <b>135 kernel launches</b>, several of them 1-block kernels (an M=1 LayerNorm occupies 1 of 24 SMs); llama.cpp captures the whole step in a CUDA graph</td></tr>
+      <tr><td>attention ctx-scaling</td><td>0.1406 ms</td><td>27%</td><td>ours grows +0.2748 ms from ctx 128→1023; llama.cpp only +0.1342 ms — our 3-pass <code>k_attn_decode</code> vs their flash-decode kernel</td></tr>
     </tbody>
   </table>
   </div>
-</section>
 
-<section>
-  <h2>What it taught</h2>
-
-  <h3>A kernel can be compute-bound on work it throws away</h3>
-  <p>
-    Stage 4's INT8 halves the weight bytes and buys exactly 1.00×, at every shape. Two falsifiable
-    predictions pinned down why. If the M=1 head GEMV were bandwidth-bound, halving its bytes gives ~2×
-    — measured 1.002×, rejected. If it were compute-bound on the tile's discarded rows, then M=1 and M=16
-    cost the same — measured 1.4351 ms vs 1.4346 ms, confirmed. The kernel runs at 860.6 GFLOP/s, 98.8% of
-    <em>its own</em> M=512 throughput, while pulling 23% of achieved bandwidth. Fewer bytes cannot help a
-    kernel that isn't waiting on bytes.
+  <p class="note">
+    The fixed term is not inferred from the split — it <em>is</em> the whole gap at ctx=128, where attention
+    is negligible, and it is still 0.3831 ms at ctx=1023. That is what makes the 73/27 decomposition a
+    measurement rather than an allocation. CUDA-graph capture is the named lever, and it is
+    <a href="#scope">deliberately not built</a> — which is precisely why the gap can be attributed to it
+    instead of hand-waved.
   </p>
 
-  <h3>INT8's decode payoff is bounded by the quality gate, not the hardware</h3>
-  <p>
-    Even after Stage 5 gave it a KV cache and a proper GEMV, INT8 buys 1.02–1.16×. The tied output head is
-    31% of the weight bytes and must stay fp16 or the quality gate fails; the 48 quantizable block matmuls
-    are 1.2–4.7 MB each, small enough to sit on a per-kernel latency floor at M=1. The weight-side ceiling
-    on the whole-step speedup is 1.278×. The roofline's director map predicted "high" — the honest answer
-    is that it is high for the models that prediction was written about, and GPT-2-124M is too small. A
-    property of the model, not a failure of the engine.
-  </p>
-
-  <h3>At batch=1 a 124M model is launch-bound, not bandwidth-bound</h3>
-  <p>
-    Independently confirmed by the baseline. This engine's decode step reaches 127.4 GB/s (54.6% of copy
-    bandwidth); llama.cpp, with CUDA graphs and fused kernels, reaches 159.6 GB/s (68.4%). Both are far from
-    the bus. The roofline said decode was memory-bound; at this model size, what it actually waits on is
-    kernel launches — 135 of them per decode step, where llama.cpp captures the whole step in a CUDA graph.
-    The decode gap runs 1.24× at ctx=128 — almost entirely that fixed per-step overhead — rising to 1.31× at
-    ctx=1023, where the fixed cost is still 73% of the gap and the remaining 27% is our attention kernel
-    scaling worse with context.
-  </p>
-
-  <h3>The GPU throttled itself, and confirmed the whole regime analysis</h3>
-  <p>
-    A pre-release re-run came back 36% slow. The cause: the GPU was sitting at 1920 MHz rather than the
-    2610 MHz every recorded benchmark states. That accident turned into the best evidence in the project.
-    The roofline had claimed — <em>before any kernel existed</em> — that on this laptop the power limit
-    throttles the core clock and therefore prefill, while GDDR6 is clocked by the memory chips and leaves
-    decode intact. At 0.7356× the clock, <strong>every compute ceiling scaled by 0.736–0.749</strong>
-    (tensor GEMM 31.51 → 23.23 TFLOP/s, CUDA-core GEMM 10.10 → 7.47) and <strong>neither memory ceiling
-    moved at all</strong> (copy 233.4 → 233.2 GB/s, read 248.9 → 249.1).
-  </p>
-  <p>
-    The engine split along the same seam. Prefill, multiplied by that single clock ratio, lands back on the
-    recorded numbers at <em>every stage of the ladder</em> — naive 840.0, tiled 184.8, flash 107.3, INT8
-    107.4 ms — within 0.21%. The no-KV recompute path returns to within 0.05% at three separate context
-    lengths. The true M=1 decode step, meanwhile, barely notices: +2.2% at ctx=128. The head GEMV, pure
-    DRAM, is identical to the microsecond. Prefill is compute-bound; decode is not; the ceilings say so and
-    a 26% clock swing proves it.
-  </p>
-  <p>
-    It also validates the denominator. Prefill efficiency is clock-invariant — 631.1 GFLOP/s ÷ 7.47 TFLOP/s
-    = 8.45% today, 856.1 ÷ 10.10 = 8.48% before. A ratio that holds across a 26% clock swing is a
-    measurement. A clock-<em>derived</em> ceiling could not have done that, which is the next section.
-  </p>
-
-  <h3>I checked my own denominators, and one was wrong</h3>
-  <p>
-    For several stages the CUDA-core compute ceiling was <em>derived from the clock</em>
-    (24 SM × 128 lanes × 2 × 2.61 GHz = 16.0 TFLOP/s) and then used as the denominator for "% of roofline".
-    Measuring it showed the achievable non-tensor GEMM is <strong>10.10 TFLOP/s</strong> — the assumption was
-    optimistic by 1.55×, and the ridge point it implied (≈69) was wrong; the real one is 43.3. Labelling a
-    number "derived, not measured" does not license using it as a measurement. The correction is in the git
-    history, along with a <code>clock64()</code> cross-check that reported 146% of the hardware's issue width
-    — impossible — and was discarded rather than published.
+  <p class="note">
+    One baseline number is worth reading twice: <b>PyTorch eager's trunk prefill is 9.441 ms at P=128 and
+    9.395 ms at P=512</b> — identical, for four times the work. It is host-dispatch-bound at this model size.
+    That is why beating it on decode by 4.2–4.8× is table stakes, and why llama.cpp is the only baseline here
+    that says anything at all.
   </p>
 </section>
 
-<section>
-  <h2>Demo</h2>
-  <!-- ============================================================
-       PLACEHOLDER — demo video. Replace this block with, e.g.:
-         <video controls playsinline poster="demo-poster.jpg" width="100%">
-           <source src="demo.mp4" type="video/mp4">
-         </video>
-       ============================================================ -->
-  <div class="placeholder">
-    <strong>Demo video slot</strong>
-    <span>Drop <code>docs/demo.mp4</code> here and replace this block with a &lt;video&gt; tag.</span>
-  </div>
-</section>
-
+<!-- ============================== PROFILES ============================== -->
 <section>
   <h2>Profiles</h2>
   <p class="note">
-    Nsight Compute counters (2024.3.0; RTX 4060 Laptop, CC 8.9). These <b>corroborate</b> the mechanism claims that
-    <code>ptxas -v</code>, the M-sweep, and achieved GFLOP/s vs GB/s had already established — they do not
-    change a verdict. Raw text exports: <code>docs/ncu/</code>.
+    Nsight Compute counters (2024.3.0; RTX 4060 Laptop, CC 8.9). These <b>corroborate</b> the mechanism claims
+    that <code>ptxas -v</code>, the M-sweep, and achieved GFLOP/s vs GB/s had already established — they do not
+    change a verdict. Raw counter transcriptions:
+    <a href="https://github.com/phannhan/engine/blob/HEAD/docs/ncu/raw_counters.txt"><code>docs/ncu/raw_counters.txt</code></a>,
+    text exports in <a href="https://github.com/phannhan/engine/tree/HEAD/docs/ncu"><code>docs/ncu/</code></a>.
   </p>
 
   <h3>Global-load coalescing at M=1 — naive vs tiled GEMM</h3>
   <p class="note">
     <code>k_matmul</code> vs <code>k_matmul_tiled</code>, M=1, N=2304, K=768. Naive's <b>2.002 bytes per
     32-byte sector</b> is exactly one fp16 per sector: the weight stride (1536 B) exceeds a sector, so every
-    lane lands in its own. Tiling reclaims 8.74× fewer sectors per request.
+    lane lands in one of its own.
   </p>
   <div class="tablewrap">
   <table>
@@ -264,8 +577,8 @@
   </div>
   <p class="note">
     Halving the head's bytes <em>would</em> pay ~2×. It is kept fp16 anyway: quantizing it alone cost
-    KL 0.257 and Δppl +0.549. INT8 decode's 1.02–1.16× ceiling is therefore a <b>quality</b> constraint
-    sitting on a <b>bandwidth-ready</b> kernel — not a bandwidth limit.
+    KL 0.257 and Δppl +0.549, failing both gates. INT8 decode's 1.02–1.16× ceiling is therefore a
+    <b>quality</b> constraint sitting on a <b>bandwidth-ready</b> kernel — not a bandwidth limit.
   </p>
 
   <img src="ncu/head_gemv_sol.png" alt="Nsight Compute Speed-of-Light, head GEMV: 96.27% DRAM throughput">
@@ -276,7 +589,77 @@
   </div>
 </section>
 
+<!-- ============================== REPRODUCING ============================== -->
 <section>
+  <h2>Reproducing it</h2>
+  <p>
+    <b>Build the engine</b> (Windows, MSVC + CUDA 12.6; the MinGW <code>gcc</code> on PATH is 32-bit and
+    cannot hold the 498 MB fp32 model). Three scripts, each callable from the repo root; together they build
+    every binary named below:
+  </p>
+
+<pre><code>build_cuda.bat      :: Stages 1-5: correctness_cuda, kv_gate, bench_decode, profile_decode,
+                    ::            profile_forward, ab_forward, eval_ppl_cuda, microbench
+build.bat           :: Stage 0: the pure-C fp32 reference (bench\correctness.exe)
+build_profile.bat   :: the isolated matmul harness the ncu section drives (bench\profile_matmul.exe)</code></pre>
+
+  <p><b>Run the gates</b> (correctness before speed, every time):</p>
+
+<pre><code>set GPT2_BACKEND=flash
+bench\correctness_cuda.exe all      :: gates (a) (b) (c) vs the HF fp16 oracle
+bench\kv_gate.exe                   :: Stage-5 KV-cache decode gates + cached-vs-recompute equivalence</code></pre>
+
+  <p>
+    <code>GPT2_BACKEND</code> selects the kernel path: <code>naive</code> | <code>tiled</code> |
+    <code>flash</code> | <code>int8</code> | <code>gemv</code>. All six shipped paths (those five plus the
+    pure-C fp32 reference) pass the gates.
+  </p>
+
+  <p><b>Benchmark:</b></p>
+
+<pre><code>bench\bench_decode.exe 50           :: true M=1 decode; KV vs no-KV; naive/tiled/gemv/int8  (50 = ITERS, see below)
+bench\bench_decode.exe 256          :: the same, at BENCH_PROTOCOL §6's N &gt;= 256 median samples
+bench\profile_decode.exe 512        :: per-op attribution + achieved bandwidth per GEMV
+bench\microbench.exe cudacore       :: the measured CUDA-core ceiling behind every "% of roofline"
+bench\profile_matmul.exe bw 50257 768  :: the M-sweep: why tiling loses at M=1 on the tied head</code></pre>
+
+  <p class="note">
+    <b><code>bench_decode</code>'s argument is <code>iters</code>, not decode steps</b> — worth stating,
+    because reading <code>50</code> as "50 tokens" would put it under
+    <a href="https://github.com/phannhan/engine/blob/HEAD/BENCH_PROTOCOL.md">BENCH_PROTOCOL.md</a> §6's
+    N ≥ 256. <code>iters</code> is the number of timed A/B samples, and each sample times a batch of 4–16
+    decode steps and divides — so the reported figure is still ms <em>per token</em>, and <code>50</code>
+    executes <b>800 timed decode steps</b>. It is the ledger value: the <code>iters=50</code> that produced
+    stage 5's recorded block. The batching exists because a ~2 ms step spanning 135 launches is sensitive to
+    host jitter; it amortises jitter and does not change what is measured.
+  </p>
+
+  <h3>Reproducing the llama.cpp baseline — three traps, all of which cost me time</h3>
+  <ol>
+    <li>
+      Mainline's HF→GGUF converter is <b>broken for GPT-2</b>. <code>conversion/gpt2.py</code> intends to
+      drop the legacy causal-mask buffers, but hands them to <code>map_tensor_name()</code> instead, raising
+      <code>Can not map tensor 'h.0.attn.bias'</code>. The one-line fix is at
+      <code>tools/llamacpp_gpt2_convert.patch</code>. It is a genuine upstream bug, not a local convenience.
+    </li>
+    <li>
+      <b>Use <code>llama-completion</code>, not <code>llama-cli</code>.</b> <code>llama-cli</code> is now a
+      chat front-end and injects a ChatML template; GPT-2 tokenizes <code>&lt;|im_start|&gt;</code> literally
+      and emits garbage. That is a front-end artifact, not a broken model — <code>llama-completion</code>
+      gives <em>"Paris … Berlin … Washington … London"</em>.
+    </li>
+    <li>
+      <b><code>llama-bench</code> prints mean ± stddev, not median.</b> Use <code>-o json</code> and recompute
+      the median from <code>samples_ns</code>. Measure decode at a stated context with
+      <code>-d/--n-depth</code> and a short <code>-n</code>, or the context drifts across the generation.
+    </li>
+  </ol>
+
+<pre><code>python tools\bench_pytorch.py       :: the PyTorch eager baseline (TF32 off, sync-bracketed)</code></pre>
+</section>
+
+<!-- ============================== SCOPE ============================== -->
+<section id="scope">
   <h2>Scope</h2>
   <p>
     Forward inference, batch=1, one model, one GPU, the ladder above. Not a framework, not a serving system,
@@ -285,10 +668,19 @@
     not built, which is precisely why the gap can be attributed to them rather than hand-waved.
   </p>
   <p class="note">
+    <b>INT4 is not attempted, and the reason is measured rather than declined.</b> Its bound is pre-registered
+    and locked (Δppl ≤ +1.0), but the shipped INT8 build clears the KL gate with a margin of only
+    <b>1.34×</b> — max KL 1.495e-2 against the 0.02 bound, where fp16 had 10× — and the 48 quantized block
+    matmuls consume nearly all of that budget on their own. INT4 has essentially no headroom on this model
+    without further mixed precision. The bound stays locked regardless: an INT4 attempt that breaches it is an
+    honest negative result, not an invitation to re-tune the bound afterwards — exactly as INT8's breached
+    +0.3 was kept.
+  </p>
+  <p class="note">
     BENCHMARKS.md also records an INT8-vs-llama.cpp-Q8_0 decode comparison, deliberately not headlined: the
     schemes don't match. Ours is mixed precision — 48 block matmuls in INT8 with the tied head held in fp16
-    because the quality gate demands it — while Q8_0 is uniform int8 over every weight. Different byte
-    counts, different quality points, no Δppl measured for Q8_0. Context, not a result.
+    because the quality gate demands it — while Q8_0 is uniform int8 over every weight. Different byte counts,
+    different quality points, no Δppl measured for Q8_0. Context, not a result.
   </p>
   <p class="note">
     Hardware: RTX 4060 Laptop (AD107, sm_89, 24 SM, 8 GB GDDR6, 105 W). Measured: 233.4 GB/s copy bandwidth,
@@ -303,7 +695,9 @@
      <a href="https://github.com/phannhan/engine/blob/HEAD/DESIGN.md">DESIGN.md</a>,
      <a href="https://github.com/phannhan/engine/blob/HEAD/ROOFLINE.md">ROOFLINE.md</a>,
      <a href="https://github.com/phannhan/engine/blob/HEAD/QUALITY_GATES.md">QUALITY_GATES.md</a>,
-     <a href="https://github.com/phannhan/engine/blob/HEAD/BENCH_PROTOCOL.md">BENCH_PROTOCOL.md</a>.</p>
+     <a href="https://github.com/phannhan/engine/blob/HEAD/BENCH_PROTOCOL.md">BENCH_PROTOCOL.md</a>.
+     Every number on this page is recorded, with its config and clocks, in
+     <a href="https://github.com/phannhan/engine/blob/HEAD/BENCHMARKS.md">BENCHMARKS.md</a>.</p>
 </footer>
 
 </body>

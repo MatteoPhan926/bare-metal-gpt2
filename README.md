@@ -173,11 +173,22 @@ paths (those five plus the pure-C fp32 reference) pass the gates.
 **Benchmark:**
 
 ```bat
-bench\bench_decode.exe 50           :: true M=1 decode; KV vs no-KV; naive/tiled/gemv/int8
+bench\bench_decode.exe 50           :: true M=1 decode; KV vs no-KV; naive/tiled/gemv/int8  (50 = ITERS, see below)
+bench\bench_decode.exe 256          :: the same, at BENCH_PROTOCOL §6's N >= 256 median samples
 bench\profile_decode.exe 512        :: per-op attribution + achieved bandwidth per GEMV
 bench\microbench.exe cudacore       :: the measured CUDA-core ceiling behind every "% of roofline"
 bench\profile_matmul.exe bw 50257 768  :: the M-sweep: why tiling loses at M=1 on the tied head
 ```
+
+**`bench_decode`'s argument is `iters`, not decode steps** — worth stating plainly, because reading `50` as
+"50 tokens" would put it under [BENCH_PROTOCOL.md](BENCH_PROTOCOL.md) §6's N ≥ 256. `iters` is the number of
+**timed A/B samples**, and each sample times a **batch of 4–16 decode steps and divides** — so the reported
+figure is still ms *per token*, and `50` executes **800 timed decode steps**. `50` is the ledger value: it
+is the `iters=50` that produced Stage 5's recorded block. The batching exists because a ~2 ms step spanning
+135 kernel launches is sensitive to host jitter — a single Windows hiccup inflates one sample by ~30% and
+destroys min/max disjointness. It amortises jitter across the batch; it does **not** change what is
+measured, and it is the §6 remedy ("spread is wide → widen N, **never** pick the good one"), not an evasion
+of it.
 
 **Reproducing the llama.cpp baseline** — three traps, all of which cost me time:
 
@@ -222,6 +233,15 @@ Forward inference, batch=1, one model, one GPU, the specific ladder above. Not a
 system, not multi-GPU, not a llama.cpp clone. Tensor cores (WMMA), kernel fusion beyond Stage 3, and CUDA
 graph capture are named in the roofline as the levers that would close the remaining gap — and are
 deliberately not built, which is why the gap can be attributed to them rather than hand-waved.
+
+**INT4 is not attempted, and the reason is measured rather than declined.** Its bound is pre-registered and
+**LOCKED** (Δppl ≤ +1.0, [QUALITY_GATES.md](QUALITY_GATES.md) §2), but the shipped INT8 build clears the KL
+gate with a margin of only **1.34×** (max KL 1.495e-2 against the 0.02 bound, where fp16 had 10×), and the
+48 quantized *block* matmuls consume nearly all of that budget on their own (blocks-only KL 1.283e-2). So
+INT4 has **essentially no headroom on this model** without further mixed precision, and would very likely
+fail the gate. The bound stays locked anyway: if an INT4 attempt breaches it, that is an honest negative
+result to report — not an invitation to re-tune the bound afterwards, exactly as INT8's breached +0.3 was
+kept.
 
 Hardware: RTX 4060 Laptop (AD107, sm_89, 24 SM, 8 GB GDDR6, 105 W). Measured: 233.4 GB/s copy bandwidth,
 248.9 GB/s read, 31.51 TFLOP/s tensor GEMM, 10.10 TFLOP/s achievable CUDA-core GEMM.

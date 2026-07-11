@@ -9,6 +9,14 @@
   --code-bg: #f6f7f9;
   --best: #0a7a3f;
   --maxw: 46rem;
+
+  /* Chart series. Validated (dataviz six-checks) against the light surface:
+     lightness band, chroma floor, adjacent-pair CVD separation, contrast >= 3:1. */
+  --c-prefill: #0b5fff;   /* prefill / compute-bound   */
+  --c-decode:  #0a7a3f;   /* decode  / memory-bound    */
+  --grid: #e4e6ea;
+  --tile-on: #0b5fff;     /* the one output row that is kept  */
+  --tile-off: #d3d7dd;    /* the fifteen that are discarded   */
 }
 
 @media (prefers-color-scheme: dark) {
@@ -20,6 +28,14 @@
     --accent: #6ea8ff;
     --code-bg: #1c1f25;
     --best: #4ade80;
+
+    /* Dark steps are SELECTED, not an automatic flip: the dark lightness band is
+       tighter (L 0.48-0.67), so the light hues are re-snapped, then re-validated. */
+    --c-prefill: #4c8dff;
+    --c-decode:  #22a05a;
+    --grid: #2a2e35;
+    --tile-on: #4c8dff;
+    --tile-off: #363b44;
   }
 }
 
@@ -146,6 +162,70 @@ pre code { background: none; padding: 0; }
 }
 .placeholder strong { display: block; color: var(--fg); margin-bottom: 0.35rem; font-weight: 600; }
 .placeholder span { font-size: 0.9rem; }
+
+/* ---------- figures ---------- */
+
+figure { margin: 1.5rem 0; }
+
+/* Wide figures scroll inside their own box; the page body never scrolls sideways. */
+.figwrap { overflow-x: auto; }
+.figwrap svg { display: block; min-width: 30rem; width: 100%; height: auto; }
+
+figcaption {
+  color: var(--dim);
+  font-size: 0.88rem;
+  line-height: 1.55;
+  margin-top: 0.6rem;
+}
+
+/* SVG text inherits ink tokens, never a series color. */
+svg .lab { fill: var(--fg); font-size: 12px; }
+svg .lab-sm { fill: var(--dim); font-size: 11px; }
+svg .lab-val { fill: var(--fg); font-size: 11.5px; font-weight: 600; }
+svg .axis { stroke: var(--line); stroke-width: 1; }
+svg .grid { stroke: var(--grid); stroke-width: 1; }
+svg .rule { stroke: var(--dim); stroke-width: 1; stroke-dasharray: 4 3; }
+svg .s-prefill { fill: var(--c-prefill); }
+svg .s-decode { fill: var(--c-decode); }
+svg .l-decode { fill: none; stroke: var(--c-decode); stroke-width: 2; }
+svg .ring { stroke: var(--bg); stroke-width: 2; }
+svg .mono { font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; }
+
+.legend {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 1rem;
+  align-items: center;
+  font-size: 0.88rem;
+  color: var(--dim);
+  margin: 0.5rem 0 0.25rem;
+}
+.legend span { display: inline-flex; align-items: center; gap: 0.4rem; }
+.legend i {
+  width: 0.75rem;
+  height: 0.75rem;
+  border-radius: 3px;
+  display: inline-block;
+}
+.legend .k-prefill { background: var(--c-prefill); }
+.legend .k-decode { background: var(--c-decode); }
+
+/* The hero one-liner. */
+.claim {
+  font-size: 1.12rem;
+  color: var(--fg);
+  border-left: 3px solid var(--accent);
+  padding-left: 0.9rem;
+  margin: 1.5rem 0;
+}
+
+details.tableview { margin: 0.75rem 0 0; }
+details.tableview summary {
+  cursor: pointer;
+  color: var(--dim);
+  font-size: 0.88rem;
+}
+details.tableview summary:hover { color: var(--accent); }
 
 footer {
   margin-top: 3.5rem;

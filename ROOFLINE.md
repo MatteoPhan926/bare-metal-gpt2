@@ -146,13 +146,32 @@ easiest way to misread a prefill number. All three denominators are measured (§
 >   **1.72× @512**; isolated attention 14.5×. Attention's share of prefill@512 fell 44.80% → 5.27%.
 > - **Row 3a (fused LN+matmul) — FALSIFIED for prefill, REVERTED.** Predicted "modest"; measured an
 >   above-noise **2.9% slowdown**. The honest prefill prediction was ≈0 (LayerNorm is 0.28% of prefill@512),
->   and negative once the fusion adds per-consumption work. Its conjecture stays **OPEN for true M=1 decode**.
-> - **Row 3a's conjecture** stays OPEN for true M=1 decode (LN's share is far larger there).
+>   and negative once the fusion adds per-consumption work.
+> - **Row 3a for true M=1 decode — `[CLOSED at Stage 5, 2026-07-11]`.** This line used to say the conjecture
+>   "stays OPEN for true M=1 decode (LN's share is far larger there)". Stage 5 built true M=1 decode and
+>   **redirected the premise rather than confirming it.** (i) LN's M=1 share is **not measurable with this
+>   engine's tooling**: `profile_decode`'s per-op split trips its own validity guard (sum-of-parts/whole =
+>   **1.51×**; each per-op sync adds ~7.7 µs to a ~2 ms, 135-launch step), so those shares are **not used**,
+>   and no fused-LN claim may rest on them. (ii) What *is* measured says the M=1 lever is elsewhere: the
+>   decode gap to llama.cpp is **0.3831 ms of fixed per-step overhead — the whole gap at ctx=128, 73% of it
+>   at ctx=1023** — against **135 kernel launches**, several 1-block kernels (an M=1 LayerNorm occupies 1 of
+>   24 SMs), where llama.cpp captures the step in a **CUDA graph**. **The lever is the launch count, not the
+>   activation round-trip** — and CUDA-graph capture is deliberately not built (DESIGN §2), which is why the
+>   gap can be *attributed* to it. **No fused-LN decode speedup is claimed; none was measured.**
+>   Full outcome recorded at the bet itself, DESIGN §5.
+
+> ## ⛔ SUPERSEDED — the annotation immediately below is the **Stage-4-era** verdict, kept as the record of
+> ## what was known then. **Stage 5 made row 4 testable and REFUTED it** (1.02–1.16×, bounded at 1.278× by
+> ## the fp16 tied head). **The standing verdict is the "✅ RESOLVED" block further down; read that one.**
+> *Kept, not deleted: "untested, not refuted" was the honest call at Stage 4, and the reasoning below is
+> what correctly predicted that a KV cache alone would not surface the win — which is why Stage 5 shipped a
+> GEMV. Deleting it would erase a prediction that came true.*
 
 > **Annotation — ROW 4 (INT8 → decode "high"), as measured at Stage 4.**
 > *Deliberately mirrors the row-2 annotation below, because it is the same structural situation.*
 >
-> **"High decode payoff" is UNTESTED, not refuted.** As with row 2, the cell describes a **true (M=1)
+> **"High decode payoff" is UNTESTED, not refuted `[as of Stage 4 — now REFUTED, see the RESOLVED block]`.**
+> As with row 2, the cell describes a **true (M=1)
 > decode, which does not exist in this engine until the KV cache (Stage 5)**. Stage 4 could therefore only
 > measure INT8 on (i) **prefill** and (ii) the **no-KV recompute-decode (M≫1)** harness — both
 > reuse/compute-shaped, neither weight-traffic-bound — plus (iii) the one M=1-shaped op that does exist,
