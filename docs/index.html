@@ -7,7 +7,7 @@
 <meta name="description" content="From-scratch GPT-2-124M inference engine in C and CUDA. Decode at 76-83% of llama.cpp on the same GPU; the prefill gap decomposed into measured factors.">
 <link rel="stylesheet" href="style.css">
 <!-- NOTE (owner): repo URL below is a placeholder — no git remote is configured yet.
-     Search/replace "github.com/phannhan/engine" if the repo lands elsewhere.
+     Search/replace "github.com/MatteoPhan926/bare-metal-gpt2" if the repo lands elsewhere.
      Links use /blob/HEAD/ so they work on any default branch.
 
      NOTE (owner): the hero has a slot for a terminal GIF — a real decode run with a live
@@ -21,10 +21,10 @@
   <p class="sub">Pure C → CUDA · five optimization stages · every number gated, roofline-checked, and reproducible<br>
      One model (GPT-2-124M), one GPU (RTX 4060 Laptop, sm_89).</p>
   <p class="links">
-    <a class="btn" href="https://github.com/phannhan/engine">Code</a>
-    <a class="btn" href="https://github.com/phannhan/engine/blob/HEAD/BENCHMARKS.md">Benchmarks</a>
-    <a class="btn" href="https://github.com/phannhan/engine/blob/HEAD/ROOFLINE.md">Roofline</a>
-    <a class="btn" href="https://github.com/phannhan/engine/blob/HEAD/DESIGN.md">Design log</a>
+    <a class="btn" href="https://github.com/MatteoPhan926/bare-metal-gpt2">Code</a>
+    <a class="btn" href="https://github.com/MatteoPhan926/bare-metal-gpt2/blob/HEAD/BENCHMARKS.md">Benchmarks</a>
+    <a class="btn" href="https://github.com/MatteoPhan926/bare-metal-gpt2/blob/HEAD/ROOFLINE.md">Roofline</a>
+    <a class="btn" href="https://github.com/MatteoPhan926/bare-metal-gpt2/blob/HEAD/DESIGN.md">Design log</a>
   </p>
 </header>
 
@@ -194,7 +194,7 @@
       different quantity, so the series does not connect to it. Stage 3a (fused LayerNorm) is absent from
       both axes because it was measured and reverted.
       <br><br>
-      Sources: <a href="https://github.com/phannhan/engine/blob/HEAD/BENCHMARKS.md">BENCHMARKS.md</a>
+      Sources: <a href="https://github.com/MatteoPhan926/bare-metal-gpt2/blob/HEAD/BENCHMARKS.md">BENCHMARKS.md</a>
       Table 2 and the per-stage blocks. Stage 0 is CPU (AMD Ryzen 7 7840H), included as the from-scratch
       baseline and not roofline-checked against GPU ceilings.
     </figcaption>
@@ -296,7 +296,7 @@
     </svg>
     </div>
     <figcaption>
-      Source: <a href="https://github.com/phannhan/engine/blob/HEAD/BENCHMARKS.md">BENCHMARKS.md</a>
+      Source: <a href="https://github.com/MatteoPhan926/bare-metal-gpt2/blob/HEAD/BENCHMARKS.md">BENCHMARKS.md</a>
       Stage 4 (the two predictions and the M=1 ≡ M=16 result) and the ncu section (naive 962.72 µs vs tiled
       1927.52 µs at the head shape, both reading 77.30 MB). This is what forced stage 5 to ship a dedicated
       M=1 GEMV alongside the cache: a KV cache alone could not have surfaced the INT8 win.
@@ -369,7 +369,7 @@
     </svg>
     </div>
     <figcaption>
-      Source: <a href="https://github.com/phannhan/engine/blob/HEAD/BENCHMARKS.md">BENCHMARKS.md</a>
+      Source: <a href="https://github.com/MatteoPhan926/bare-metal-gpt2/blob/HEAD/BENCHMARKS.md">BENCHMARKS.md</a>
       Stage 3a, including the control (isolated attention 1.000× / 0.998× / 1.007×, ranges overlapping — so
       the 2.9% is attributable to the fusion and nothing else moved). The pre-registered expectation, written
       down <em>before</em> measuring, was "unresolvable, or a small loss": LayerNorm is 0.28% of prefill@512,
@@ -448,7 +448,7 @@
       tested it. Compute ceilings scaled; memory ceilings did not; and the engine's own timings split along
       the same seam — prefill down 36%, the M=1 decode step down 2–12%, the head GEMV (pure DRAM) identical
       to the microsecond. Source:
-      <a href="https://github.com/phannhan/engine/blob/HEAD/BENCHMARKS.md">BENCHMARKS.md</a>,
+      <a href="https://github.com/MatteoPhan926/bare-metal-gpt2/blob/HEAD/BENCHMARKS.md">BENCHMARKS.md</a>,
       "Pre-public audit" §2. It revises no recorded number: every block states the clock it was measured at.
     </figcaption>
   </figure>
@@ -470,7 +470,7 @@
 
   <p>
     <b>Be precise about what each term is.</b> Only the first is an independent measurement: it is the ratio
-    of two separately microbenchmarked peaks (<a href="https://github.com/phannhan/engine/blob/HEAD/ROOFLINE.md">ROOFLINE.md</a>
+    of two separately microbenchmarked peaks (<a href="https://github.com/MatteoPhan926/bare-metal-gpt2/blob/HEAD/ROOFLINE.md">ROOFLINE.md</a>
     §6 and §6b). It is a ceiling this engine <em>cannot</em> reach, because it uses no tensor cores — a scope
     decision, not an oversight. The second is the <b>residual</b>, gap ÷ 3.12×, which happens to equal the
     ratio of how much of its own ceiling each engine reaches. So <code>3.12 × 4.63 = 14.44</code> is an
@@ -527,8 +527,8 @@
     Nsight Compute counters (2024.3.0; RTX 4060 Laptop, CC 8.9). These <b>corroborate</b> the mechanism claims
     that <code>ptxas -v</code>, the M-sweep, and achieved GFLOP/s vs GB/s had already established — they do not
     change a verdict. Raw counter transcriptions:
-    <a href="https://github.com/phannhan/engine/blob/HEAD/docs/ncu/raw_counters.txt"><code>docs/ncu/raw_counters.txt</code></a>,
-    text exports in <a href="https://github.com/phannhan/engine/tree/HEAD/docs/ncu"><code>docs/ncu/</code></a>.
+    <a href="https://github.com/MatteoPhan926/bare-metal-gpt2/blob/HEAD/docs/ncu/raw_counters.txt"><code>docs/ncu/raw_counters.txt</code></a>,
+    text exports in <a href="https://github.com/MatteoPhan926/bare-metal-gpt2/tree/HEAD/docs/ncu"><code>docs/ncu/</code></a>.
   </p>
 
   <h3>Global-load coalescing at M=1 — naive vs tiled GEMM</h3>
@@ -626,7 +626,7 @@ bench\profile_matmul.exe bw 50257 768  :: the M-sweep: why tiling loses at M=1 o
   <p class="note">
     <b><code>bench_decode</code>'s argument is <code>iters</code>, not decode steps</b> — worth stating,
     because reading <code>50</code> as "50 tokens" would put it under
-    <a href="https://github.com/phannhan/engine/blob/HEAD/BENCH_PROTOCOL.md">BENCH_PROTOCOL.md</a> §6's
+    <a href="https://github.com/MatteoPhan926/bare-metal-gpt2/blob/HEAD/BENCH_PROTOCOL.md">BENCH_PROTOCOL.md</a> §6's
     N ≥ 256. <code>iters</code> is the number of timed A/B samples, and each sample times a batch of 4–16
     decode steps and divides — so the reported figure is still ms <em>per token</em>, and <code>50</code>
     executes <b>800 timed decode steps</b>. It is the ledger value: the <code>iters=50</code> that produced
@@ -692,12 +692,12 @@ bench\profile_matmul.exe bw 50257 768  :: the M-sweep: why tiling loses at M=1 o
 
 <footer>
   <p>Built from scratch in C and CUDA. Methodology in
-     <a href="https://github.com/phannhan/engine/blob/HEAD/DESIGN.md">DESIGN.md</a>,
-     <a href="https://github.com/phannhan/engine/blob/HEAD/ROOFLINE.md">ROOFLINE.md</a>,
-     <a href="https://github.com/phannhan/engine/blob/HEAD/QUALITY_GATES.md">QUALITY_GATES.md</a>,
-     <a href="https://github.com/phannhan/engine/blob/HEAD/BENCH_PROTOCOL.md">BENCH_PROTOCOL.md</a>.
+     <a href="https://github.com/MatteoPhan926/bare-metal-gpt2/blob/HEAD/DESIGN.md">DESIGN.md</a>,
+     <a href="https://github.com/MatteoPhan926/bare-metal-gpt2/blob/HEAD/ROOFLINE.md">ROOFLINE.md</a>,
+     <a href="https://github.com/MatteoPhan926/bare-metal-gpt2/blob/HEAD/QUALITY_GATES.md">QUALITY_GATES.md</a>,
+     <a href="https://github.com/MatteoPhan926/bare-metal-gpt2/blob/HEAD/BENCH_PROTOCOL.md">BENCH_PROTOCOL.md</a>.
      Every number on this page is recorded, with its config and clocks, in
-     <a href="https://github.com/phannhan/engine/blob/HEAD/BENCHMARKS.md">BENCHMARKS.md</a>.</p>
+     <a href="https://github.com/MatteoPhan926/bare-metal-gpt2/blob/HEAD/BENCHMARKS.md">BENCHMARKS.md</a>.</p>
 </footer>
 
 </body>
