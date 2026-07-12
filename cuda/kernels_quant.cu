@@ -143,10 +143,12 @@ int gpt2_quant_load_upload(const char *path, GPT2WeightsGPU *gpu, GPT2QWeightsGP
     gpu->q = q;
     CUDA_CHECK(cudaGetLastError());
     int n_kept = 0; for (int i = 0; i < N_QT; i++) n_kept += !flag[i];
-    size_t streamed = nq + kept_bytes;
+    // Streamed per decode step = int8 payload + per-channel scales (a quantized GEMV reads one float
+    // per output row) + any kept-fp16 tensor. Kill-test build: 84.93 + 0.33 + 77.19 -> 162.46 MB.
+    size_t streamed = nq + ns * sizeof(float) + kept_bytes;
     q->streamed_bytes = streamed;
-    printf("[quant] %s: %d/%d tensors int8 (%.1f MB) + %d kept fp16 (%.1f MB)\n",
-           path, N_QT - n_kept, N_QT, nq / 1e6, n_kept, kept_bytes / 1e6);
+    printf("[quant] %s: %d/%d tensors int8 (%.1f MB + %.2f MB scales) + %d kept fp16 (%.1f MB)\n",
+           path, N_QT - n_kept, N_QT, nq / 1e6, ns * sizeof(float) / 1e6, n_kept, kept_bytes / 1e6);
     printf("[quant] streamed weight bytes = %.1f MB  -> decode ceilings [copy %.0f / read %.0f / theo %.0f tok/s]\n",
            streamed / 1e6, 233.4e3 / (streamed / 1e6), 248.9e3 / (streamed / 1e6), 256.0e3 / (streamed / 1e6));
     return 0;

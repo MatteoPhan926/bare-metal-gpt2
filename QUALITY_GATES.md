@@ -107,7 +107,8 @@ re-tune the bound after the fact.**
 > no downstream LayerNorm to rescale the perturbation away.
 > **Outcome:** 48/49 tensors INT8, tied head fp16 → Δppl **+0.027**, KL 0.0150. **Bound never re-tuned.**
 > **Recorded honestly:** full weight-only INT8 *including the tied head* is **not a valid quality point** for
-> GPT-2-124M. Cost of the remedy: streamed weight bytes 123.5 → 162.1 MB (decode ceiling 1876 → 1440 tok/s).
+> GPT-2-124M. Cost of the remedy: streamed weight bytes 123.5 → 162.1 MB (decode ceiling 1876 → 1440 tok/s;
+exact incl. per-channel scales: 124.06 → 162.46 MB — loader-metric fix, 2026-07-12).
 > **Forward-looking:** the recovered KL margin is only **1.34×** the 0.02 bound (fp16 had 10×), because the 48
 > quantized block matmuls consume most of the budget (blocks-only KL 1.283e-2) — so **INT4 has essentially no
 > headroom on this model** without further mixed precision. The INT4 bound **Δppl ≤ +1.0 is pre-registered and

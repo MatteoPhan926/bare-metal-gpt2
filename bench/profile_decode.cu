@@ -1,7 +1,7 @@
 // profile_decode.cu — STAGE 5 measure-before-optimize (DESIGN.md §9.1).
 //
-// The A/B said INT8 gives only ~1.1x at true M=1, NOT above noise -- even though it streams 162.1 MB
-// against fp16's 248.9 MB (1.54x fewer weight bytes). Either (i) the GEMV is not weight-traffic-bound,
+// The A/B said INT8 gives only ~1.1x at true M=1, NOT above noise -- even though it streams 162.5 MB
+// against fp16's 248.9 MB (1.53x fewer weight bytes). Either (i) the GEMV is not weight-traffic-bound,
 // or (ii) something else dominates the step. Guessing is forbidden; this profiles it.
 //
 // Two instruments:
@@ -175,6 +175,7 @@ int main(int argc,char**argv){
         {"ffnproj N=768 K=3072", E, GPT2_FFN_DIM, ly->proj_w, &qy->proj_w, ly->proj_b, s.ff},
         {"head    N=50257 K=768", V, E, w.wte, &qw.wte, nullptr, big},
     };
+    double head_fp16_ms = 0.0;                 // [B]'s tied-head median; the shared term in [C]'s ceiling
     for(auto &c : cs){
         auto f16=[&]{ gpt2_gemv_fp16(c.out,s.ln,c.Wh,c.bias,c.N_,c.K_); };
         auto i8 =[&]{ if(c.Wq->q) gpt2_gemv_int8(c.out,s.ln,c.Wq->q,c.Wq->s,c.bias,c.N_,c.K_);
@@ -184,6 +185,8 @@ int main(int argc,char**argv){
         std::vector<double> a,b;
         for(int i=0;i<200;i++){ a.push_back(cuda_time_once_ms(f16)); b.push_back(cuda_time_once_ms(i8)); }
         double ma=median_of(a), mb=median_of(b);
+        if (c.N_ == V) head_fp16_ms = ma;      // head: fp16 in BOTH builds (kill-test), 77.2 MB >> L2 ->
+                                               // a true DRAM figure from THIS session
         double B16=(double)c.N_*c.K_*2.0, B8 = c.Wq->q? (double)c.N_*c.K_ : B16;
         printf("  %-28s %10.4f %10.1f %10.1f   %10.4f %10.1f %10.1f   %7.3fx%s\n", c.name,
                ma,B16/1e6,B16/(ma*1e-3)/1e9, mb,B8/1e6,B8/(mb*1e-3)/1e9, ma/mb,
@@ -221,8 +224,9 @@ int main(int argc,char**argv){
         printf("  INT8 48 block GEMVs : %.4f ms  -> %.1f MB at %.1f GB/s\n", mb, MB8,  MB8 /(mb*1e-3)/1e3);
         printf("  speedup = %.3fx   (a pure byte-halving would give 2.00x; the shortfall is the per-kernel\n"
                "            latency floor -- 48 launches of 1.2-4.7 MB each, see attnproj at 8.2 us both ways)\n\n", ma/mb);
-        // What that implies for the whole step, given the head is fp16 in BOTH builds:
-        double head = 0.3174;
+        // What that implies for the whole step, given the head is fp16 in BOTH builds. The head term is
+        // [B]'s median from THIS run: a hardcoded constant would mix perf states across sessions.
+        double head = head_fp16_ms;
         printf("  IMPLIED CEILING on INT8's whole-step win, with the head kept fp16 (Stage 4's kill-test):\n");
         printf("    fp16 step >= blocks %.4f + head %.4f = %.4f ms ;  INT8 step >= %.4f + %.4f = %.4f ms\n",
                ma, head, ma+head, mb, head, mb+head);

@@ -138,8 +138,10 @@ def main():
               f"rel_maxnorm={st['rel_err_maxnorm']:.5f} dead={st['dead_rows']}")
 
     print(f"[quant] worst rms_rel_err: {worst[0]} = {worst[1]:.5f}" if worst[0] else "[quant] nothing quantized")
-    # Weight bytes STREAMED per decode token (ROOFLINE §2 counts exactly these tensors).
-    streamed = q_params * 1 + kept_params * 2
+    # Weight bytes STREAMED per decode token (ROOFLINE §2 counts exactly these tensors). A quantized
+    # GEMV also reads its per-channel scales (one float per output row), so they count too.
+    q_scale_bytes = sum(4 * m["shape"][0] for m in meta if m["quantized"])
+    streamed = q_params * 1 + q_scale_bytes + kept_params * 2
     fp16_bytes = (q_params + kept_params) * 2
     print(f"[quant] quantized params = {q_params:,}   kept-fp16 params = {kept_params:,}")
     print(f"[quant] streamed weight bytes = {streamed/1e6:.1f} MB  (fp16 would be {fp16_bytes/1e6:.1f} MB"

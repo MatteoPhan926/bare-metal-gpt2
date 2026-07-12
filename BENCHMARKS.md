@@ -789,6 +789,9 @@ ROOFLINE CHECK:   prefill @512 = 855.9 GFLOP/s. Correct denominator for a CUDA-c
                     fp16          248.9 MB -> copy  938 / read 1000 / theo 1029 tok/s
                     INT8 pure     123.5 MB -> copy 1889 / read 2015 / theo 2072 tok/s
                     INT8 kill-test 162.1 MB -> copy 1440 / read 1535 / theo 1579 tok/s  [the shipped build]
+                    [2026-07-12: streamed_bytes now also counts per-channel scales (one float per output
+                     row of each quantized tensor): kill-test exact 162.46 MB -> 1437/1532/1576; pure
+                     124.06 MB -> 1881/2006/2063. A 0.2-0.4% correction; no verdict moves.]
                   measured no-KV recompute-decode 47.0 tok/s = **3.3%** of its 1440 copy-BW ceiling.
                   NO number is above any ceiling, in any build. No STOP condition triggered.
 
@@ -940,6 +943,19 @@ MEASURE-BEFORE-OPTIMIZE (§9.1 ; bench/profile_decode.cu):
          135-launch overhead dilute it. Measured 1.02-1.16x is consistent with that ceiling.
       => If the head could also be INT8 (it cannot, at this quality bar) the weight-side ceiling would be
          1.516x. Even then, "high" would be a stretch at batch=1 on a 124M model.
+
+      *** [RE-VERIFIED 2026-07-12 -- audit follow-up: same-session ceiling components] ***
+      profile_decode's [C] ceiling print previously reused a hardcoded head term (0.3174 ms, the
+      publication session's [B] median), which would mix perf states if re-run on a machine in a
+      different state; it now measures the head in [B] and composes the ceiling from SAME-SESSION
+      components. Clean-session re-run @ctx=512 (no concurrent GPU/CPU jobs; head GEMV at 243.2 GB/s
+      confirms the boost state; validity guard SUM/whole = 1.54x, healthy):
+        blocks 0.8981 -> 0.6379 ms (1.408x, was 1.405x) ; head 0.3174 ms (identical to 4 d.p.)
+        => same-session ceiling = 1.272x -- the published 1.278x reproduces within 0.5%.
+      Streamed-bytes metric, same audit: the loader now also counts the 0.33 MB of per-channel scales a
+      quantized GEMV reads (one float per output row); the exact kill-test figure is 162.46 MB (the
+      162.1 MB quoted in this file's recorded blocks is int8+fp16 payload only). Ceilings move ~0.2%
+      (copy 1440 -> 1437 tok/s). No verdict changes.
   KV reads are NOT dominating: 18.9 MB/step at ctx=512 = 7% of the 247.1 MB of weights (37.7 MB = 13% at
   ctx=1023). Attention grows with ctx, which is why the INT8 ratio improves with ctx (more of the step is
   non-weight work at low ctx... and at high ctx the KV traffic evicts weights from L2, exposing more DRAM).

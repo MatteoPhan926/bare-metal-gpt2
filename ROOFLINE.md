@@ -228,7 +228,12 @@ easiest way to misread a prefill number. All three denominators are measured (§
 > kernel launches per step dilute it further. The measured 1.02–1.16× is exactly consistent with that ceiling.
 > Had the head been quantizable the ceiling would be 1.516× — still not "high" at batch=1 on a 124M model.
 >
-> **The honest reading of row 4:** quantization's decode lever is real (162.1 vs 248.9 MB streamed) but its
+> *(Re-verified 2026-07-12, audit follow-up: `profile_decode` no longer hardcodes the head term in its [C]
+> ceiling print — it composes same-session components. Clean-session re-run: blocks 1.408×, head 0.3174 ms
+> identical to 4 d.p., ceiling **1.272×** — the published figure reproduces within 0.5%.)*
+>
+> **The honest reading of row 4:** quantization's decode lever is real (162.1 vs 248.9 MB streamed; exact
+> incl. per-channel scales **162.46 MB**, see the §6 loader note) but its
 > size is set by *what fraction of the weight bytes you are allowed to quantize* and by *whether the tensors
 > are large enough to be bandwidth-bound at M=1*. On GPT-2-124M, the answer to both is unfavourable. On a
 > larger model — bigger per-layer matrices, an output head that is a smaller share of total weights — the
@@ -309,6 +314,10 @@ kernel reaches a *fraction* — launch overhead, KV & activation traffic, imperf
 > derived from the bytes a build *actually* streams — `bench/correctness_cuda.cu` now computes them from
 > `GPT2QWeightsGPU::streamed_bytes` rather than hardcoding. The shipped INT8 build (tied head kept fp16)
 > streams **162.1 MB** → **1440 copy / 1535 read / 1579 theo**.
+>
+> **`[2026-07-12]`** `streamed_bytes` now also counts the per-channel scales a quantized GEMV reads (one
+> float per output row; 0.33 MB in the kill-test build): exact **162.46 MB** → **1437 / 1532 / 1576**; the
+> pure build is 124.06 MB → 1881 / 2006 / 2063. A ~0.2–0.4% correction; no verdict anywhere changes.
 
 ---
 
