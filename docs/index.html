@@ -6,6 +6,7 @@
 <title>A GPT-2 inference engine, written from scratch in C and CUDA</title>
 <meta name="description" content="From-scratch GPT-2-124M inference engine in C and CUDA. Decode at 76-83% of llama.cpp on the same GPU; the prefill gap decomposed into measured factors.">
 <link rel="stylesheet" href="style.css">
+<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
 <!-- NOTE (owner): repo URL below is a placeholder — no git remote is configured yet.
      Search/replace "github.com/MatteoPhan926/bare-metal-gpt2" if the repo lands elsewhere.
      Links use /blob/HEAD/ so they work on any default branch.
@@ -20,12 +21,23 @@
   <h1>A GPT-2 inference engine, written from scratch in C and CUDA</h1>
   <p class="sub">Pure C → CUDA · five optimization stages · every number gated, roofline-checked, and reproducible<br>
      One model (GPT-2-124M), one GPU (RTX 4060 Laptop, sm_89).</p>
-  <p class="links">
-    <a class="btn" href="https://github.com/MatteoPhan926/bare-metal-gpt2">Code</a>
-    <a class="btn" href="https://github.com/MatteoPhan926/bare-metal-gpt2/blob/HEAD/BENCHMARKS.md">Benchmarks</a>
-    <a class="btn" href="https://github.com/MatteoPhan926/bare-metal-gpt2/blob/HEAD/ROOFLINE.md">Roofline</a>
-    <a class="btn" href="https://github.com/MatteoPhan926/bare-metal-gpt2/blob/HEAD/DESIGN.md">Design log</a>
-  </p>
+  <p class="links" style="display: flex; flex-wrap: wrap; gap: 12px; margin-top: 20px;">
+    <a class="btn" href="https://youtu.be/qBpzFPme2Ns">
+      <i class="fa-brands fa-youtube"></i> Video
+    </a>
+    <a class="btn" href="https://github.com/MatteoPhan926/bare-metal-gpt2">
+      <i class="fa-brands fa-github"></i> Code
+    </a>
+    <a class="btn" href="https://github.com/MatteoPhan926/bare-metal-gpt2/blob/HEAD/BENCHMARKS.md">
+      <i class="fa-solid fa-chart-simple"></i> Benchmarks
+    </a>
+    <a class="btn" href="https://github.com/MatteoPhan926/bare-metal-gpt2/blob/HEAD/ROOFLINE.md">
+      <i class="fa-solid fa-arrow-trend-up"></i> Roofline
+    </a>
+    <a class="btn" href="https://github.com/MatteoPhan926/bare-metal-gpt2/blob/HEAD/DESIGN.md">
+      <i class="fa-solid fa-book"></i> Design log
+    </a>
+  </p>
 </header>
 
 <main>
@@ -66,11 +78,7 @@
        Replace this whole .placeholder div with:
          <img src="decode.gif" alt="Terminal: greedy decode with a live tok/s counter" width="100%">
        ============================================================ -->
-  <div class="placeholder">
-    <strong>Terminal GIF slot</strong>
-    <span>A real decode run, live tok/s counter. Drop <code>docs/decode.gif</code> here and swap this block
-    for the <code>&lt;img&gt;</code> tag in the comment above it.</span>
-  </div>
+  <img class="img-zoom" src="decode.gif" alt="Terminal: greedy decode with a live tok/s counter">
 </section>
 
 <!-- ============================== THE LADDER ============================== -->
@@ -582,11 +590,6 @@
   </p>
 
   <img src="ncu/head_gemv_sol.png" alt="Nsight Compute Speed-of-Light, head GEMV: 96.27% DRAM throughput">
-  <div class="placeholder">
-    <strong>Nsight Compute GUI capture slot</strong>
-    <span>Optional garnish. The Speed-of-Light numbers above are the same ones the GUI renders — exported
-    from <code>ncu_head_gemv_sol.ncu-rep</code> via the CLI, which cannot itself emit images.</span>
-  </div>
 </section>
 
 <!-- ============================== REPRODUCING ============================== -->
