@@ -1,5 +1,5 @@
 # BENCHMARKS.md — measured results (the portfolio artifact)
-### GPT-2-124M · RTX 4060 Laptop (105 W) · one validated block per run
+### GPT-2-124M · RTX 4060 Laptop (105 W) · one validated block per run 
 
 > One block per **validated** run (BENCH_PROTOCOL §8).
 > A number appears here **only** after: correctness gate passed (QUALITY_GATES §1) → measured
