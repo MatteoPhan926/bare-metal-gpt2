@@ -78,7 +78,12 @@ static void kv_decode_seq(const GPT2Backend *be, const GPT2WeightsGPU *w, GPT2KV
     bool graph_mode = getenv("GPT2_DECODE") && !strcmp(getenv("GPT2_DECODE"), "graph");
     GPT2DecodeGraph *graph = nullptr;
     half *step_logits = graph_mode ? dmalloc<half>(V) : nullptr;
-    if (graph_mode) CUDA_CHECK(gpt2_decode_graph_create(&graph,be,w,kv,s,step_logits,step_caps));
+    GPT2GraphAttention attention = GPT2GraphAttention::Original;
+#ifdef GPT2_ENABLE_ATTN_V4
+    if (getenv("GPT2_ATTENTION") && !strcmp(getenv("GPT2_ATTENTION"),"v4"))
+        attention = GPT2GraphAttention::V4;
+#endif
+    if (graph_mode) CUDA_CHECK(gpt2_decode_graph_create(&graph,be,w,kv,s,step_logits,step_caps,nullptr,attention));
 #endif
     for (int t = 0; t < n; t++) {
 #ifdef GPT2_ENABLE_GRAPHS
@@ -102,6 +107,17 @@ static void kv_decode_seq(const GPT2Backend *be, const GPT2WeightsGPU *w, GPT2KV
 
 int main(int argc, char **argv) {
     const char *policy = getenv("GPT2_DECODE");
+    const char *attention = getenv("GPT2_ATTENTION");
+    if (attention && strcmp(attention,"original")) {
+#ifdef GPT2_ENABLE_ATTN_V4
+        if (strcmp(attention,"v4") || !policy || strcmp(policy,"graph")) {
+            fprintf(stderr,"V4 requires GPT2_DECODE=graph; unknown attention policy rejected\n"); return 1;
+        }
+#else
+        fprintf(stderr,"attention policy unavailable in this build\n"); return 1;
+#endif
+    }
+    printf("attention policy: %s\n", attention ? attention : "original");
     if (policy && strcmp(policy,"ordinary") && strcmp(policy,"graph")) {
         fprintf(stderr,"unknown GPT2_DECODE policy\n"); return 1;
     }

@@ -3,6 +3,9 @@
 #include "common.cuh"
 #include <chrono>
 #include <thread>
+#ifdef GPT2_ENABLE_ATTN_V4
+#include "attention_v4.cuh"
+#endif
 
 // These three existing kernels alone have changing scalar launch parameters.
 // Names/signatures are checked against captured function identities, not node order.
@@ -46,9 +49,14 @@ static bool owner_ok(const GPT2DecodeGraph *g) {
 
 cudaError_t gpt2_decode_graph_create(GPT2DecodeGraph **out, const GPT2Backend *be,
     const GPT2WeightsGPU *w, GPT2KVCache *kv, GPT2ScratchGPU *s,
-    half *logits, half *caps, GPT2GraphSetup *setup) {
+    half *logits, half *caps, GPT2GraphSetup *setup, GPT2GraphAttention attention) {
     if (!out) return cudaErrorInvalidValue;
     *out = nullptr;
+    if (attention != GPT2GraphAttention::Original && attention != GPT2GraphAttention::V4)
+        return cudaErrorInvalidValue;
+#ifndef GPT2_ENABLE_ATTN_V4
+    if (attention != GPT2GraphAttention::Original) return cudaErrorNotSupported;
+#endif
     if (!be || !be->gemv || !w || !w->data || !kv || !kv->data || !s ||
         !s->x || s->maxT < 1 || !logits || kv->maxT < 1 || kv->maxT > GPT2_N_CTX ||
         kv->nLayer != GPT2_N_LAYER || kv->nHead != GPT2_N_HEAD || kv->headDim != GPT2_HEAD_DIM)
@@ -100,6 +108,16 @@ cudaError_t gpt2_decode_graph_create(GPT2DecodeGraph **out, const GPT2Backend *b
             d.args[d.nptr+j] = &d.scalar[j];
         }
         d.params.kernelParams = d.args;
+#ifdef GPT2_ENABLE_ATTN_V4
+        // Replace only the twelve attention nodes BEFORE instantiation. Their
+        // pointers/length/shared-memory ABI are unchanged; prepare still updates
+        // all 25 dynamic nodes. Original policy takes exactly the old path.
+        if (kind == 2 && attention == GPT2GraphAttention::V4) {
+            d.params.func = (void*)k_attn_decode_v4;
+            d.params.blockDim = dim3(256);
+            CUDA_CHECK(cudaGraphKernelNodeSetParams(node, &d.params));
+        }
+#endif
         ++counts[kind];
     }
     if (counts[0]!=1 || counts[1]!=GPT2_N_LAYER || counts[2]!=GPT2_N_LAYER ||

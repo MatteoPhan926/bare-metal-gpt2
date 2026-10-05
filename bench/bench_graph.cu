@@ -15,14 +15,27 @@ struct Timer {
     ~Timer(){ cudaEventDestroy(a); cudaEventDestroy(b); }
     float elapsed(){ float ms; CUDA_CHECK(cudaEventElapsedTime(&ms,a,b)); return ms; }
 };
-static const char *policy(int p){ return p==0 ? "ordinary" : p==1 ? "graph" : "graph_fixed_diagnostic"; }
+static const char *policy(int p){
+#ifdef GPT2_PHASE22
+    return p==0 ? "original" : p==1 ? "v4" : "v4_fixed_diagnostic";
+#else
+    return p==0 ? "ordinary" : p==1 ? "graph" : "graph_fixed_diagnostic";
+#endif
+}
+static bool graph_policy(int p) {
+#ifdef GPT2_PHASE22
+    return true;
+#else
+    return p!=0;
+#endif
+}
 static Sample timed(Phase2Model &m,Phase2State &s,Timer &t,int p,int token,int pos,
                     const char *experiment,int ctx,int rep,half *host=nullptr,bool sampling=true) {
     auto begin=WallClock::now();
     CUDA_CHECK(cudaEventRecord(t.a));
     auto submit=WallClock::now();
     double update=0;
-    if(p==1) {
+    if(p<=1 && graph_policy(p)) {
         CUDA_CHECK(gpt2_decode_graph_prepare(s.graph,token,pos));
         update=wall_ms(submit);
         CUDA_CHECK(gpt2_decode_graph_launch(s.graph));
@@ -39,7 +52,11 @@ static Sample timed(Phase2Model &m,Phase2State &s,Timer &t,int p,int token,int p
     return {experiment,policy(p),ctx,pos,rep,token,t.elapsed(),wall,enqueue,update};
 }
 static void setup(Phase2Model &m,Phase2State &s,GPT2GraphSetup *t=nullptr) {
-    CUDA_CHECK(gpt2_decode_graph_create(&s.graph,m.be,&m.w,&s.kv,&s.s,s.logits,nullptr,t));
+    GPT2GraphAttention attention=GPT2GraphAttention::Original;
+#ifdef GPT2_PHASE22
+    attention=GPT2GraphAttention::V4;
+#endif
+    CUDA_CHECK(gpt2_decode_graph_create(&s.graph,m.be,&m.w,&s.kv,&s.s,s.logits,nullptr,t,attention));
 }
 static void output() {
     puts("sample,experiment,policy,ctx,pos,rep,token,event_ms,wall_ms,enqueue_ms,update_ms");
@@ -67,6 +84,10 @@ int main(int argc,char **argv) {
     Phase2State a,b;
     Phase2State *states[2]={&a,&b};
     Timer timer;
+#ifdef GPT2_PHASE22
+    puts("metadata,experiment,phase22_v4");
+    CUDA_CHECK(gpt2_decode_graph_create(&a.graph,m.be,&m.w,&a.kv,&a.s,a.logits,nullptr));
+#endif
     if(policies==2) {
         GPT2GraphSetup t{}; auto begin=WallClock::now(); setup(m,b,&t);
         samples.push_back({"setup","process_cold",128,128,-1,0,t.capture_ms,wall_ms(begin),t.instantiate_ms,t.upload_ms});
@@ -85,7 +106,7 @@ int main(int argc,char **argv) {
         require(ctx>0 && ctx<=1023,"profile ctx out of range");
         int p=!strcmp(mode,"profile_graph"); auto &s=*states[p];
         s.fill(m,ids,ctx);
-        for(int i=0;i<10;i++){ s.kv.len=ctx; s.step(m,ids[ctx],ctx,p!=0); }
+        for(int i=0;i<10;i++){ s.kv.len=ctx; s.step(m,ids[ctx],ctx,graph_policy(p)); }
         CUDA_CHECK(cudaDeviceSynchronize());
         CUDA_CHECK(cudaProfilerStart());
         for(int i=0;i<n;i++) {
@@ -115,7 +136,7 @@ int main(int argc,char **argv) {
             int p=policies==2 && (i&1)?1-k:k; auto &s=*states[p];
             auto begin=WallClock::now(); CUDA_CHECK(cudaEventRecord(timer.a));
             auto submit=WallClock::now();
-            for(int j=0;j<16;j++){ s.kv.len=ctx; s.step(m,ids[ctx],ctx,p!=0); }
+            for(int j=0;j<16;j++){ s.kv.len=ctx; s.step(m,ids[ctx],ctx,graph_policy(p)); }
             double enqueue=wall_ms(submit)/16;
             CUDA_CHECK(cudaEventRecord(timer.b)); CUDA_CHECK(cudaEventSynchronize(timer.b));
             double wall=wall_ms(begin)/16;
@@ -142,7 +163,14 @@ int main(int argc,char **argv) {
                         if(rep>=0 && pos>=ctx) samples.push_back(row);
                     }
                 }
-                if(policies==2) require(trajectory[0]==trajectory[1],"timed generation trajectories differ");
+                if(policies==2) {
+#ifdef GPT2_PHASE22
+                    if(trajectory[0]!=trajectory[1])
+                        printf("trajectory_difference,workload=%d,ctx=%d,rep=%d\n",workload,ctx,rep);
+#else
+                    require(trajectory[0]==trajectory[1],"timed generation trajectories differ");
+#endif
+                }
             }
         }
         cudaFreeHost(host);

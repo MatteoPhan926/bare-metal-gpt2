@@ -1,0 +1,4 @@
+[kv] plan: 12 layers x 2 (K,V) x 12 heads x 1024 pos x 64 dim x fp16 = 37.7 MB
+[kv] arena = ONE contiguous alloc; VRAM free 7444/8585 MB -> headroom 7406 MB after cache
+[kv] decode KV traffic = 36.9 KB per token of context (2*L*H*D*2B); at ctx=512 -> 18.9 MB/step
+PASS isolated: 3 patterns x all 1024 lengths, poisoned future; CPU-double rel=0.000748691629, original rel=0.00100804747
