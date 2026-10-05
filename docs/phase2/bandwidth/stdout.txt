@@ -1,0 +1,10 @@
+Device: NVIDIA GeForce RTX 4060 Laptop GPU  sm_89  24 SM  L2=32MiB  memclk=8001MHz bus=128-bit
+Theoretical BW: 256.0 GB/s
+
+==== BANDWIDTH (buffer=256MiB/ea, block=256 grid=4096, WARM=10 ITERS=50) ====
+COPY (2N r+w) : median 233.5  min 229.5  max 234.4 GB/s   (91.2% of 256 theo)
+READ (1N)     : median 249.4  min 243.0  max 249.9 GB/s   (97.4% of 256 theo)
+ACHIEVED_BW_COPY_GBPS=233.5
+ACHIEVED_BW_READ_GBPS=249.4
+
+DONE mode=bw

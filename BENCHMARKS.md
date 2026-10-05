@@ -1483,3 +1483,66 @@ launch-count expression inside a `printf` argument**. No kernel, no numeric path
 configuration. Proof: the gate matrix in §1 above, re-run after every edit, reproduces every pre-audit
 value bit-for-bit — including the fp16 `1.953e-03` / INT8 `1.495e-02` KLs and the `[EQ]` equivalence
 figures, which a single changed kernel byte would move.
+
+---
+
+## Phase 2 — decode CUDA Graph intervention (2026-10-05)
+
+**ACCEPTED, OPT-IN.** Preregistered in `7018406` before implementation;
+[PHASE2_PLAN.md](PHASE2_PLAN.md) is unchanged. The
+[audit](PHASE2_AUDIT.md) found that Phase 1's 73/27 launch/attention attribution
+was inferred, fixed-position samples excluded sampling, and long-context input
+was partly zero-filled. New measurements correct those instruments without
+rewriting the historical results above.
+
+135 original kernels, 25 node updates, stable borrowed buffers, one graph for
+all positions, no arithmetic/quantization/GEMM/attention change. Separate build
+uses per-thread default stream for both ordinary and graph; legacy-stream
+baseline preserved. All exact and existing HF gates pass, fp16 and mixed INT8;
+no tolerances changed. See [PHASE2_RESULTS.md](PHASE2_RESULTS.md) for full evidence
+and [PHASE2_REPRO.md](PHASE2_REPRO.md) for commands.
+
+Target: RTX 4060 Laptop sm_89; driver 561.09; CUDA 12.6.20; clocks unlocked,
+2595 MHz median SM / 8000 MHz memory during engine load, median 61..65 C.
+Three independent runs per backend, 256 individual samples/condition/run,
+interleaved/reversed A/B. Five initial generation steps discarded; windows below
+repeated 16 times. Real WikiText IDs, batch=1, greedy CPU argmax. All raw samples
+and telemetry retained in `docs/phase2/`. Below: **median of run medians
+[all-sample min,max]**, synchronized **whole-generation wall ms/token**, including
+updates, logits D2H and sampling; excludes load, prefill, graph setup, tokenization.
+
+| Backend; window | Ordinary | Graph | Graph tok/s | Within-run latency reduction range |
+|---|---:|---:|---:|---:|
+| fp16; 128..143 | 2.176 [1.694,3.731] | 1.565 [1.506,2.426] | 639 | 22.3..29.9% |
+| fp16; 512..527 | 2.119 [1.966,3.401] | 1.926 [1.758,2.699] | 519 | 8.9..18.6% |
+| fp16; 1007..1022 | 2.398 [2.283,3.860] | 2.148 [2.086,3.013] | 466 | 10.4..11.9% |
+| mixed INT8; 128..143 | 2.020 [1.489,3.850] | 1.291 [1.237,1.938] | 775 | 35.6..36.7% |
+| mixed INT8; 512..527 | 2.141 [1.678,3.303] | 1.564 [1.489,2.772] | 639 | 25.1..29.9% |
+| mixed INT8; 1007..1022 | 2.239 [1.992,4.056] | 1.901 [1.794,2.704] | 526 | 11.7..18.9% |
+
+**Mechanism survives; constant-overhead model does not.** Short fp16 advancing
+forward savings = 0.479 / 0.544 / 0.330 ms, all > preregistered 0.19 ms. Long
+savings = 0.199..0.233 ms, not a fixed additive constant. Nsight node traces show
+internal gaps ~0.537→0.012 ms short and 0.251→0.011 ms long, with instrumentation
+distortion disclosed. Node updates are small; fixed-parameter replay is only
+~6..20 us faster short. Warm setup ~0.32 ms total; first setup after model load
+3.47..4.05 ms, so steady-state is not cold TTFT. Prefill stays ~107.9 ms at P512;
+isolated output head ~0.34 ms. Bandwidth remeasures 233.5 [229.5,234.4] GB/s copy,
+249.4 [243.0,249.9] read; no ceiling crossed.
+
+New external comparison uses identical IDs/windows and weight values, sustained
+warmup, host-visible logits and no sampling. Native F16 GGUF's fp32 scalars are
+rounded in a separate copy; original artifacts unchanged. Arithmetic still
+differs (llama fp32 intermediates/logits vs our fp16), so this is not bit-matched
+precision and no universal superiority is claimed. New median ms/token:
+ordinary **1.901/1.936/2.256**, graph **1.426/1.682/2.008**, llama matched-value F16
+**1.681/1.824/1.816**. Short/medium median gap eliminated; long gap **0.440→0.192
+ms (~56% removed)**. Native-F16 control and every spread are in the result report.
+No INT8-vs-Q8_0 quality equivalence, or new PyTorch speed ratio, is claimed.
+
+**Next single experiment:** graph-enabled partitioned decode attention. It is
+~36% of long-context graph GPU kernel time, only 12×64 threads, ~4.13% active-SM
+warp occupancy and 41.48 GB/s DRAM reads. GEMV remains the largest overall decode
+class; attention explains the growth with context. Prefill GEMM remains the
+largest separate latency opportunity. The corrected causal result, including
+the failed constant-savings prediction, is preserved rather than retrofitted.

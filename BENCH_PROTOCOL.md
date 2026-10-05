@@ -1,6 +1,20 @@
 # BENCH_PROTOCOL.md — Pre-registered benchmark protocol
 ### GPT-2-124M · RTX 4060 Laptop (105W) · companion to DESIGN.md + ROOFLINE.md
 
+> **Phase-2 clarification (2026-10-05).** The historical harness did not implement
+> every rule below: fixed-position batches excluded sampling and 50 batch averages
+> were conflated with 800 individual samples. New measurements follow
+> [PHASE2_PLAN.md](PHASE2_PLAN.md): 256 individual samples per condition, plus
+> separately labelled 50×16 legacy batches; 30 prefill controls; all raw values.
+> Growing windows are 128..143, 512..527 and 1007..1022, each after five discarded
+> decode steps, repeated 16 times. This avoids impossible continuations past 1024.
+> Three distinct boundaries are retained: GPU-resident forward; forward with
+> host-visible logits; and complete greedy generation (D2H, synchronization,
+> finite check and CPU argmax included). Tokenization/load/setup stay excluded.
+> CUDA events include idle gaps; they are not summed kernel execution time.
+> Mixed INT8 versus llama Q8_0 is not an equivalent quality point. External F16
+> arithmetic/storage differences must be disclosed even when weight values match.
+
 > **What this file is.** Pre-registers **how** every number is measured, *before* anything is measured —
 > so the protocol cannot drift toward flattering numbers (DESIGN.md §0, firewall 2). Three files, three
 > jobs: **this file = how to measure**; **ROOFLINE.md = the ceiling to check against**;

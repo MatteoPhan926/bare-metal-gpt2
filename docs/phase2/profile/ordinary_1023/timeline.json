@@ -1,0 +1,48 @@
+{
+  "n_steps": 16,
+  "n_kernels": 2160,
+  "timing": {
+    "kernel_ms": {
+      "median": 2.0539145,
+      "min": 2.051881,
+      "max": 2.064752
+    },
+    "span_ms": {
+      "median": 2.3092965,
+      "min": 2.271774,
+      "max": 2.536656
+    },
+    "internal_gap_ms": {
+      "median": 0.2510064999999999,
+      "min": 0.21813000000000038,
+      "max": 0.48477499999999996
+    }
+  },
+  "kernel_mean_ms_per_step": {
+    "k_embed_one(__half *, const __half *, const __half *, int, int)": 0.0014340624999999996,
+    "k_layernorm(__half *, const __half *, const __half *, const __half *, int, int)": 0.08378062499999991,
+    "k_gemv_fp16(__half *, const __half *, const __half *, const __half *, int, int)": 1.129784499999999,
+    "k_kv_append(__half *, __half *, const __half *, int, int)": 0.013344562500000042,
+    "k_attn_decode(__half *, const __half *, const __half *, const __half *, int, int)": 0.7893451250000002,
+    "k_add(__half *, const __half *, unsigned long long)": 0.02415025000000002,
+    "k_gelu(__half *, unsigned long long)": 0.01254675
+  },
+  "api_count_total_ms": {
+    "cudaEventRecord_ptsz_v7000": {
+      "count": 32,
+      "total_ms": 0.290792
+    },
+    "cudaEventSynchronize_v3020": {
+      "count": 16,
+      "total_ms": 18.182482
+    },
+    "cudaLaunchKernel_ptsz_v7000": {
+      "count": 2160,
+      "total_ms": 19.172874
+    },
+    "cudaProfilerStart_v4000": {
+      "count": 1,
+      "total_ms": 1996.129991
+    }
+  }
+}

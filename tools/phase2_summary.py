@@ -7,6 +7,7 @@ Batch16 rows are batch averages, NOT independent individual-token samples.
 import csv
 import io
 import json
+import math
 from pathlib import Path
 import statistics as st
 import sys
@@ -26,6 +27,8 @@ def summarize(directory):
         item = dict(experiment=experiment, policy=policy, ctx=ctx, n=len(rows))
         for metric in ("event_ms", "wall_ms", "enqueue_ms", "update_ms"):
             values = [float(r[metric]) for r in rows]
+            if not all(math.isfinite(v) and v>=0 for v in values):
+                raise ValueError(f"Invalid {metric} in {directory}: {experiment}/{policy}/{ctx}")
             q = st.quantiles(values, n=4) if len(values)>1 else values*3
             item[metric] = dict(median=st.median(values), min=min(values), max=max(values), q1=q[0], q3=q[2])
         result.append(item)

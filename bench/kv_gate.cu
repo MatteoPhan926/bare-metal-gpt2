@@ -30,6 +30,7 @@
 #include <cmath>
 #include <vector>
 #include <algorithm>
+#include <limits>
 
 #define E  GPT2_N_EMBD
 #define V  GPT2_VOCAB
@@ -54,12 +55,12 @@ static float *load_f32(const char*p,size_t n){ FILE*f=fopen(p,"rb"); float*q=(fl
 static float *dl_f16(const half*d,size_t n){ std::vector<half> h(n); d2h(h.data(),d,n);
     float*o=(float*)malloc(n*sizeof(float)); for(size_t i=0;i<n;i++)o[i]=__half2float(h[i]); return o; }
 static double rel_err(const float*a,const float*b,size_t n){ double md=0,mr=0;
-    for(size_t i=0;i<n;i++){ if(!std::isfinite(a[i]) || !std::isfinite(b[i])) return INFINITY;
+    for(size_t i=0;i<n;i++){ if(!std::isfinite(a[i]) || !std::isfinite(b[i])) return std::numeric_limits<double>::infinity();
         double d=fabs((double)a[i]-(double)b[i]); if(d>md)md=d;
         double r=fabs((double)b[i]); if(r>mr)mr=r; } return md/(mr+1e-9); }
 static int argmax(const float*v,int n){ int m=0; for(int i=1;i<n;i++) if(v[i]>v[m])m=i; return m; }
 static double kl_row(const float*ref,const float*ours,int n){ double mr=-1e300,mo=-1e300;
-    for(int i=0;i<n;i++){ if(!std::isfinite(ref[i]) || !std::isfinite(ours[i])) return INFINITY;
+    for(int i=0;i<n;i++){ if(!std::isfinite(ref[i]) || !std::isfinite(ours[i])) return std::numeric_limits<double>::infinity();
         if(ref[i]>mr)mr=ref[i]; if(ours[i]>mo)mo=ours[i]; }
     double sr=0,so=0; for(int i=0;i<n;i++){ sr+=exp((double)ref[i]-mr); so+=exp((double)ours[i]-mo); }
     double lsr=mr+log(sr),lso=mo+log(so),kl=0;

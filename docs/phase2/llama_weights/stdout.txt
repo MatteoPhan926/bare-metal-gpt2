@@ -1,0 +1,29 @@
+{
+  "status": "PASS",
+  "tensors": 148,
+  "scalars_by_storage": {
+    "float16": 123532032,
+    "float32": 907776
+  },
+  "fp32_scalars_differing_from_engine_half_rounding": 907667,
+  "gguf_sha256": "5bd663a1e1d303f9404dd2edd92e4e3ca3e24bcf80d19c655880f0e455c8f4df",
+  "engine_fp32_sha256": "678b7def6053303ee6a45dfc4bdefda3ac522334b1d343f182e87fce4db0b0a6",
+  "llama_revision": "259f2e2a531af9ed3efa7f66adaa5eb5b53da95f",
+  "llama_diff": " conversion/gpt2.py | 5 ++++-\n 1 file changed, 4 insertions(+), 1 deletion(-)\n",
+  "runtime_sha256": {
+    "ggml-base.dll": "f1ab418264fa99f3be70081fcfb42a745aa0859142375f8d25605f5bedd27a4b",
+    "ggml-cpu.dll": "56fb65871e7dc36849770844bc7c65269d0d56089e5afa65837bf6ae1d143def",
+    "ggml-cuda.dll": "cda3d763ef2bce23a81245c12e55a6a951ca1f9ea50c0e2453e88d37d504813e",
+    "ggml.dll": "337fa27ec1a3911d04b58642578a3b483a343f775bafc31cdb99d89a10eeb795",
+    "llama-batched-bench-impl.dll": "0d95263f18f5c38983b9f45b4edfc47bd708111e76904d2a34cf59b7a3a68f1e",
+    "llama-bench-impl.dll": "8382f4164b549b6362c6c633d3a1fd88c7b523ea7474a18f9a8c01c287edef26",
+    "llama-cli-impl.dll": "8e6d34bad47a7ba01f5158d83fb556048eefdf459680849cb11ff4983c013a94",
+    "llama-common.dll": "cd5c49ae6189e9cbdc12ab45ef44b446a09c02dfca2e4fa63a14ac1648a68a8b",
+    "llama-completion-impl.dll": "152bdfb0c29e2c0ec3b92736727f17cfc2d140f0d173c66d9689da3f62271cd6",
+    "llama-fit-params-impl.dll": "55f7debc2b8eb842cb03857938c0c14b8f1244a4d18141aacc1c47d395a2a144",
+    "llama-perplexity-impl.dll": "b51977e07a48cbd989e13db799bf8d11cb8b6f5e5d0da8b11b8e84c39e198b06",
+    "llama-quantize-impl.dll": "a56c3e378c2d18bd8bcd6884cbab34b354bbcc412ab8c0d0bfa8d99d84898905",
+    "llama-server-impl.dll": "9d602731ac1ee72c3be942b5e7d22a268451ba51c325f956e05760360255e73e",
+    "llama.dll": "e86aad0502a2ce810e1f1f32dfffe4672072771644a2e9e3984ad58b981f1fc7"
+  }
+}

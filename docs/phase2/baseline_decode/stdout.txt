@@ -1,0 +1,66 @@
+==== STAGE 5: TRUE (M=1) DECODE — the first one this engine has had ====
+device NVIDIA GeForce RTX 4060 Laptop GPU  sm_89  24 SM   iters=256, interleaved A/B, sync-enforced, median [min-max]
+
+[quant] weights/gpt2_124m_int8_kt.bin: 48/49 tensors int8 (84.9 MB + 0.33 MB scales) + 1 kept fp16 (77.2 MB)
+[quant] streamed weight bytes = 162.5 MB  -> decode ceilings [copy 1437 / read 1532 / theo 1576 tok/s]
+[bytes] fp16 weights 248.9 MB/token   INT8(kill-test) weights 162.5 MB/token
+
+[kv] plan: 12 layers x 2 (K,V) x 12 heads x 1024 pos x 64 dim x fp16 = 37.7 MB
+[kv] arena = ONE contiguous alloc; VRAM free 7106/8585 MB -> headroom 7068 MB after cache
+[kv] decode KV traffic = 36.9 KB per token of context (2*L*H*D*2B); at ctx=512 -> 18.9 MB/step
+
+---- (1) KV cache vs no-KV recompute (fp16). Cost of ONE MORE token at ctx. ----
+     A = full forward over ctx+1 tokens (what the pre-Stage-5 harness did per token)
+     B = one M=1 decode step against a cache of length ctx
+
+  decode @ ctx=128 (fp16)                  no-KV     30.5961 ms [30.5652-30.6985]  (   32.7 tok/s)
+                                           KV         1.9220 ms [1.5514-3.1262]  (  520.3 tok/s)
+                                           speedup B vs A: 15.918x   disjoint -> above noise (B faster)
+
+  decode @ ctx=512 (fp16)                  no-KV    110.8280 ms [110.1578-110.9043]  (    9.0 tok/s)
+                                           KV         1.9016 ms [1.8104-3.2389]  (  525.9 tok/s)
+                                           speedup B vs A: 58.282x   disjoint -> above noise (B faster)
+
+  decode @ ctx=1023 (fp16)                 no-KV    222.6130 ms [222.5388-222.7825]  (    4.5 tok/s)
+                                           KV         2.2190 ms [2.1422-3.3096]  (  450.7 tok/s)
+                                           speedup B vs A: 100.321x   disjoint -> above noise (B faster)
+
+---- (2) row 2 probe: naive vs tiled MATMUL at TRUE M=1 (both KV; .gemv==NULL -> M=1 matmul) ----
+  KV decode @ ctx=128, M=1 matmul          naive      8.0707 ms [8.0215-8.1717]  (  123.9 tok/s)
+                                           tiled      5.7830 ms [5.7393-6.1320]  (  172.9 tok/s)
+                                           speedup B vs A: 1.396x   disjoint -> above noise (B faster)
+
+  KV decode @ ctx=512, M=1 matmul          naive      8.3263 ms [8.2737-8.4160]  (  120.1 tok/s)
+                                           tiled      6.0392 ms [5.9955-6.2121]  (  165.6 tok/s)
+                                           speedup B vs A: 1.379x   disjoint -> above noise (B faster)
+
+---- (2b) the GEMV kernel itself: tiled M=1 matmul vs true M=1 GEMV (both KV, both fp16) ----
+  KV decode @ ctx=128                      tiled      5.7789 ms [5.7354-5.9354]  (  173.0 tok/s)
+                                           gemv       1.9544 ms [1.5462-2.3163]  (  511.7 tok/s)
+                                           speedup B vs A: 2.957x   disjoint -> above noise (B faster)
+
+  KV decode @ ctx=512                      tiled      6.0306 ms [5.9889-6.2198]  (  165.8 tok/s)
+                                           gemv       1.8655 ms [1.7969-2.3043]  (  536.1 tok/s)
+                                           speedup B vs A: 3.233x   disjoint -> above noise (B faster)
+
+---- (3) row 4 probe: fp16 GEMV vs INT8 GEMV at TRUE M=1 (both KV). THE INT8 decode payoff. ----
+  KV decode @ ctx=128                      gemv       1.8257 ms [1.5620-2.1151]  (  547.7 tok/s)
+                                           int8       1.7284 ms [1.4677-1.9177]  (  578.6 tok/s)
+                                           speedup B vs A: 1.056x   ** [min,max] OVERLAP -> NOT above noise **
+
+  KV decode @ ctx=512                      gemv       1.9123 ms [1.8005-2.1172]  (  522.9 tok/s)
+                                           int8       1.7813 ms [1.5521-1.9877]  (  561.4 tok/s)
+                                           speedup B vs A: 1.074x   ** [min,max] OVERLAP -> NOT above noise **
+
+  KV decode @ ctx=1023                     gemv       2.1935 ms [2.1304-2.2873]  (  455.9 tok/s)
+                                           int8       1.9367 ms [1.8359-2.1617]  (  516.3 tok/s)
+                                           speedup B vs A: 1.133x   ** [min,max] OVERLAP -> NOT above noise **
+
+---- decode vs its ROOFLINE ceiling (weights + KV traffic; copy BW 233.4 GB/s) ----
+  backend ctx        ms/tok      tok/s ceil tok/s %% of ceil
+  gemv   128        1.7911      558.3        920      60.7%  (weights 248.9 + KV 4.7 MB)
+  int8   128        1.7239      580.1       1396      41.5%  (weights 162.5 + KV 4.7 MB)
+  gemv   512        1.9198      520.9        872      59.8%  (weights 248.9 + KV 18.9 MB)
+  int8   512        1.8337      545.4       1287      42.4%  (weights 162.5 + KV 18.9 MB)
+  gemv   1023       2.2040      453.7        814      55.7%  (weights 248.9 + KV 37.7 MB)
+  int8   1023       1.9539      511.8       1166      43.9%  (weights 162.5 + KV 37.7 MB)

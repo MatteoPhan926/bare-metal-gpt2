@@ -148,8 +148,9 @@ int main(int argc,char **argv) {
         cudaFreeHost(host);
     }
     if(policies==2 && (all || !strcmp(mode,"setup"))) {
+        if(!strcmp(mode,"setup")) b.fill(m,ids,128); // first replay needs a valid cache
         // The initial b graph was already instantiated. First setup here is labelled
-        // first of this series, NOT process-cold. Process-cold setup is recorded below.
+        // first of this series, NOT process-cold. Process-cold setup is recorded above.
         for(int i=0;i<31;i++) {
             gpt2_decode_graph_destroy(b.graph); b.graph=nullptr;
             GPT2GraphSetup t{}; auto begin=WallClock::now(); setup(m,b,&t);

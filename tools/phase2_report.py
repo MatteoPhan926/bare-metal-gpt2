@@ -62,12 +62,17 @@ for d in root.iterdir():
     rows=list(csv.DictReader((d/"telemetry.csv").open()))
     if not rows:continue
     # This is a load proxy, not exact alignment with each timed GPU event.
-    rows=[r for r in rows if float(r[" utilization.gpu [%]"].strip().split()[0])>=50]
+    # Terminating the telemetry subprocess can leave a partial final CSV line.
+    # Account for it explicitly; this NEVER filters benchmark latency samples.
+    complete=[r for r in rows if r.get(" utilization.gpu [%]")]
+    partial=len(rows)-len(complete)
+    rows=[r for r in complete if float(r[" utilization.gpu [%]"].strip().split()[0])>=50]
     stats={}
     for field in (" clocks.current.sm [MHz]"," clocks.current.memory [MHz]"," temperature.gpu"," power.draw [W]"):
         if rows and field in rows[0]:
             xs=[float(r[field].strip().split()[0]) for r in rows]
             stats[field.strip()]=dict(median=st.median(xs),min=min(xs),max=max(xs))
+    stats["partial_telemetry_rows"]=partial
     telemetry[d.name]=stats
 result["telemetry_util_ge50"]=telemetry
 (root/"aggregate.json").write_text(json.dumps(result,indent=2)+"\n")

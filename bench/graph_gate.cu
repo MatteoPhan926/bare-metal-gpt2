@@ -65,10 +65,13 @@ int main(int argc,char **argv) {
     gpt2_decode_graph_destroy(graph.graph); graph.graph=nullptr;
     CUDA_CHECK(gpt2_decode_graph_create(&graph.graph,model.be,&model.w,&graph.kv,&graph.s,graph.logits,nullptr,&setup));
     require(setup.copy_nodes==0,"speed graph contains diagnostic copies");
-    for(int t=graph.kv.len;t<512;++t) {
+    gpt2_kv_reset(&eager.kv); gpt2_kv_reset(&graph.kv);
+    for(int t=0;t<GPT2_N_CTX;++t) {
         eager.step(model,ids[t],t,false); graph.step(model,ids[t],t,true);
         same(eager.logits,graph.logits,GPT2_VOCAB,true,"speed graph mismatch");
     }
+    same(eager.kv.data,graph.kv.data,eager.kv.bytes/sizeof(half),true,"speed graph final KV mismatch/nonfinite");
+    printf("PASS: no-diagnostic speed graph, all 1024 positions and final KV\n");
     printf("ALL PASS backend=%s; no thresholds changed\n",model.be->name);
     return 0;
 }

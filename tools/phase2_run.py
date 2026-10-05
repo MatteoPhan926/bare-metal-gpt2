@@ -26,7 +26,7 @@ def sha(path, skip=0):
 def identity():
     tracked = subprocess.check_output(["git", "ls-files", "-co", "--exclude-standard"], text=True).splitlines()
     source = {p: sha(p) for p in tracked if Path(p).is_file() and
-              (Path(p).suffix in (".cu", ".cuh", ".c", ".cpp", ".h", ".py", ".bat") or p == "PHASE2_PLAN.md")}
+              (Path(p).suffix in (".cu", ".cuh", ".c", ".cpp", ".h", ".py", ".bat", ".ps1") or p == "PHASE2_PLAN.md")}
     inputs = [Path("weights/gpt2_124m_fp32.bin"), Path("weights/gpt2_124m_int8_kt.bin")]
     inputs += sorted(Path("refdumps").rglob("*.bin")) + [Path("refdumps/meta.json")]
     weights = Path("weights/gpt2_124m_fp32.bin")
@@ -71,6 +71,9 @@ def main():
             start = time.perf_counter()
             result = subprocess.run(cmd, stdout=out, stderr=err, creationflags=no_window)
             receipt.update(returncode=result.returncode, wall_seconds=time.perf_counter()-start)
+    except OSError as error:
+        receipt.update(returncode=127, launch_error=str(error))
+        raise
     finally:
         if monitor is not None:
             monitor.terminate()
