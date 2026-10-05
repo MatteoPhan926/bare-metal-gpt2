@@ -5,7 +5,7 @@
 #include <cuda_runtime.h>
 
 struct GPT2DecodeGraph;
-enum class GPT2GraphAttention { Original, V4 };
+enum class GPT2GraphAttention { Original, V4, Ordered4 };
 struct GPT2GraphSetup {
     double capture_ms, instantiate_ms, upload_ms;
     size_t kernel_nodes, copy_nodes, updated_nodes;

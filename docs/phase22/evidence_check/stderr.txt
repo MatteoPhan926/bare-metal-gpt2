@@ -1,0 +1,5 @@
+Traceback (most recent call last):
+  File "E:\Downloads\metal_gpt\tools\phase22_verify.py", line 39, in <module>
+    assert Path(name).read_text()==frozen, 'preregistration modified'
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+AssertionError: preregistration modified

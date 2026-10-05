@@ -1,0 +1,12 @@
+{
+  "status": "PASS",
+  "gates": 9,
+  "benchmark_processes": 6,
+  "decode_samples": 27648,
+  "all_trajectories_match": true,
+  "preregistrations_unchanged": true,
+  "accepted_kernel_unchanged": true,
+  "benchmark_executable_sha256": [
+    "2a7641729fafbca2bdd260dd725ff9d6866fd4d6d126c51d30c158ba3b35bb1e"
+  ]
+}

@@ -5,6 +5,7 @@
 #include <thread>
 #ifdef GPT2_ENABLE_ATTN_V4
 #include "attention_v4.cuh"
+#include "attention_ordered.cuh"
 #endif
 
 // These three existing kernels alone have changing scalar launch parameters.
@@ -52,7 +53,8 @@ cudaError_t gpt2_decode_graph_create(GPT2DecodeGraph **out, const GPT2Backend *b
     half *logits, half *caps, GPT2GraphSetup *setup, GPT2GraphAttention attention) {
     if (!out) return cudaErrorInvalidValue;
     *out = nullptr;
-    if (attention != GPT2GraphAttention::Original && attention != GPT2GraphAttention::V4)
+    if (attention != GPT2GraphAttention::Original && attention != GPT2GraphAttention::V4 &&
+        attention != GPT2GraphAttention::Ordered4)
         return cudaErrorInvalidValue;
 #ifndef GPT2_ENABLE_ATTN_V4
     if (attention != GPT2GraphAttention::Original) return cudaErrorNotSupported;
@@ -115,6 +117,10 @@ cudaError_t gpt2_decode_graph_create(GPT2DecodeGraph **out, const GPT2Backend *b
         if (kind == 2 && attention == GPT2GraphAttention::V4) {
             d.params.func = (void*)k_attn_decode_v4;
             d.params.blockDim = dim3(256);
+            CUDA_CHECK(cudaGraphKernelNodeSetParams(node, &d.params));
+        }
+        if (kind == 2 && attention == GPT2GraphAttention::Ordered4) {
+            d.params.func = (void*)k_attn_decode_ordered4;
             CUDA_CHECK(cudaGraphKernelNodeSetParams(node, &d.params));
         }
 #endif

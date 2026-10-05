@@ -1,0 +1,13 @@
+timestamp, name, driver_version, pstate, clocks.current.sm [MHz], clocks.current.memory [MHz], temperature.gpu, power.draw [W], utilization.gpu [%]
+2026/10/06 05:58:52.477, NVIDIA GeForce RTX 4060 Laptop GPU, 561.09, P8, 210 MHz, 405 MHz, 48, 1.76 W, 0 %
+2026/10/06 05:58:52.683, NVIDIA GeForce RTX 4060 Laptop GPU, 561.09, P8, 210 MHz, 405 MHz, 48, 1.74 W, 0 %
+2026/10/06 05:58:52.888, NVIDIA GeForce RTX 4060 Laptop GPU, 561.09, P8, 210 MHz, 405 MHz, 48, 1.69 W, 0 %
+2026/10/06 05:58:53.094, NVIDIA GeForce RTX 4060 Laptop GPU, 561.09, P8, 210 MHz, 405 MHz, 48, 2.48 W, 0 %
+2026/10/06 05:58:53.301, NVIDIA GeForce RTX 4060 Laptop GPU, 561.09, P8, 210 MHz, 405 MHz, 48, 2.41 W, 0 %
+2026/10/06 05:58:53.511, NVIDIA GeForce RTX 4060 Laptop GPU, 561.09, P8, 210 MHz, 405 MHz, 48, 1.80 W, 0 %
+2026/10/06 05:58:53.716, NVIDIA GeForce RTX 4060 Laptop GPU, 561.09, P8, 210 MHz, 405 MHz, 48, 1.66 W, 0 %
+2026/10/06 05:58:53.943, NVIDIA GeForce RTX 4060 Laptop GPU, 561.09, P8, 210 MHz, 405 MHz, 48, 1.69 W, 0 %
+2026/10/06 05:58:54.160, NVIDIA GeForce RTX 4060 Laptop GPU, 561.09, P8, 210 MHz, 405 MHz, 48, 1.86 W, 0 %
+2026/10/06 05:58:54.365, NVIDIA GeForce RTX 4060 Laptop GPU, 561.09, P8, 210 MHz, 405 MHz, 48, 1.81 W, 0 %
+2026/10/06 05:58:54.572, NVIDIA GeForce RTX 4060 Laptop GPU, 561.09, P8, 210 MHz, 405 MHz, 48, 1.91 W, 0 %
+2026/10/06 05:58:54.777, NVIDIA GeForce RTX 4060 Laptop GPU, 561.09, P8, 210 MHz, 405 MHz, 48, 2.01 W, 0 %

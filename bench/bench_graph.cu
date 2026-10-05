@@ -17,7 +17,7 @@ struct Timer {
 };
 static const char *policy(int p){
 #ifdef GPT2_PHASE22
-    return p==0 ? "original" : p==1 ? "v4" : "v4_fixed_diagnostic";
+    return p==0 ? "original" : p==1 ? "ordered4" : "ordered4_fixed_diagnostic";
 #else
     return p==0 ? "ordinary" : p==1 ? "graph" : "graph_fixed_diagnostic";
 #endif
@@ -54,7 +54,7 @@ static Sample timed(Phase2Model &m,Phase2State &s,Timer &t,int p,int token,int p
 static void setup(Phase2Model &m,Phase2State &s,GPT2GraphSetup *t=nullptr) {
     GPT2GraphAttention attention=GPT2GraphAttention::Original;
 #ifdef GPT2_PHASE22
-    attention=GPT2GraphAttention::V4;
+    attention=GPT2GraphAttention::Ordered4;
 #endif
     CUDA_CHECK(gpt2_decode_graph_create(&s.graph,m.be,&m.w,&s.kv,&s.s,s.logits,nullptr,t,attention));
 }
@@ -85,7 +85,7 @@ int main(int argc,char **argv) {
     Phase2State *states[2]={&a,&b};
     Timer timer;
 #ifdef GPT2_PHASE22
-    puts("metadata,experiment,phase22_v4");
+    puts("metadata,experiment,phase22_ordered4");
     CUDA_CHECK(gpt2_decode_graph_create(&a.graph,m.be,&m.w,&a.kv,&a.s,a.logits,nullptr));
 #endif
     if(policies==2) {

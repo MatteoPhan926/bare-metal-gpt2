@@ -428,3 +428,34 @@ not the unprofiled engine's latency. [Counters with units](docs/phase2/ncu_atten
 Prefill is unchanged (~107.9 ms at P512). No new tensor-core ceiling or WMMA
 speedup was measured. The old 3.12× × 4.63× factorization is an arithmetic
 identity using empirical peaks, not two independently isolated causal effects.
+
+## 9. Phase 2.2: source-level seriality is not absence of memory parallelism
+
+The value-only intervention lost and was not promoted. The original kernel's
+scalar-looking value loop is compiled into a hot loop with sixteen independent
+loads ahead of their use. Explicit ordered four-load grouping reduced that
+parallelism and increased warp instructions from 184,968 to 259,560, without
+changing FLOPs or logical bytes. Whole long GPU decode regressed 30% fp16 /36%
+mixed INT8. Correctness was bit-exact; this is a performance negative result.
+
+Paired NCU profiles (both ~1.919 GHz) retain 46 registers/thread, 4352 B dynamic
++256 B static shared, 12x64 grid, ~4.169% active-SM warp occupancy, zero spills,
+and exactly 835,632 L1 load sectors. DRAM reads 3.160->3.167 MB are essentially
+unchanged while diagnostic duration rises 75.456->133.024 us. Low achieved
+bandwidth is a consequence of insufficiently hidden latency, not evidence that
+DRAM bytes alone govern runtime. Occupancy/resource counts alone also miss it.
+
+The retained baseline's source-correlated PC samples are 63.8% QK dot and 31.8%
+value loop. Key loads account for 786,432 theoretical sectors (737,280
+classified excessive); values 49,152 (zero excessive). **These cache/instruction
+transactions are not DRAM-byte inflation**: actual DRAM reads stay near the
+logical single-layer KV volume. Key coalescing now has stronger evidence as the
+next narrow experiment; no speedup from that unimplemented intervention is
+claimed. PC sample shares are not exact phase durations or speedup ceilings.
+
+Fresh original-graph long fp16 logical bytes/time is ~146 GB/s, below the
+Phase-2.1 remeasured 233.5 GB/s copy /249.4 GB/s read references. No ceiling
+was redefined or exceeded. GEMV remains ~58% of total long GPU kernel time;
+attention ~36% and responsible for context growth. Prefill and its ceilings are
+unchanged. Full counter units, raw disassembly, whole-engine spreads and
+limitations: [PHASE22_RESULTS.md](PHASE22_RESULTS.md).

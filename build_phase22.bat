@@ -9,7 +9,7 @@ if errorlevel 1 exit /b 1
 if not exist build\phase22 mkdir build\phase22
 set FLAGS=-O3 -lineinfo -std=c++17 -arch=sm_89 --default-stream per-thread -DGPT2_ENABLE_GRAPHS -DGPT2_ENABLE_ATTN_V4 -DGPT2_PHASE22 -I model -I cuda
 set OBJ=
-for %%S in (cuda\kernels_naive.cu cuda\kernels_tiled.cu cuda\kernels_fused.cu cuda\kernels_quant.cu cuda\kvcache.cu cuda\forward_cuda.cu cuda\decode_graph.cu cuda\attention_v4.cu model\weights.c) do (
+for %%S in (cuda\kernels_naive.cu cuda\kernels_tiled.cu cuda\kernels_fused.cu cuda\kernels_quant.cu cuda\kvcache.cu cuda\forward_cuda.cu cuda\decode_graph.cu cuda\attention_v4.cu cuda\attention_ordered.cu model\weights.c) do (
   nvcc %FLAGS% -c %%S -o build\phase22\%%~nS.obj
   if errorlevel 1 exit /b 1
   set OBJ=!OBJ! build\phase22\%%~nS.obj

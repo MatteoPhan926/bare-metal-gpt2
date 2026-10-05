@@ -133,3 +133,16 @@ ceiling** and consistent with the regime → one template block written to BENCH
 - A **quality-gate failure** the kill-test options don't recover.
 
 Otherwise the loop is: implement, profile, check against these docs, record.
+
+## Phase-2 follow-up status
+
+The original fixed ladder above is historical, not a ban on further experiments.
+Phase 2.1 accepted opt-in CUDA Graph replay (`build_phase2.bat`). Phase 2.2
+tested only the value loop in decode attention and retained a **negative**
+result: the four-part sum failed an additional numerical gate; ordered four-load
+prefetch passed bit-exact/HF gates but regressed end-to-end performance.
+`build_phase22.bat` builds the selectable research paths, gates and paired
+harness; neither replaces the accepted original graph attention. See
+[PHASE22_RESULTS.md](PHASE22_RESULTS.md) for evidence and the single next question:
+can coalesced key staging reduce the measured key-dot-product latency while
+preserving accumulation order? No implementation or payoff is claimed yet.

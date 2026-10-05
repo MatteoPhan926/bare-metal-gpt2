@@ -3,6 +3,11 @@
 2026-10-05, RTX 4060 Laptop / sm_89. **MEASURED_VALIDATED**, not
 IMPLEMENTED_UNMEASURED. Ordinary execution remains the default.
 
+Follow-up: [Phase 2.2](PHASE22_RESULTS.md) retained this accepted graph baseline
+and rejected a value-loop change. Its source-correlated profiles refine the
+historical “next experiment” below toward key-only coalescing; the measurements
+and predictions recorded in this Phase-2.1 report are not rewritten.
+
 ## Before implementation
 
 The [audit](PHASE2_AUDIT.md) selected CUDA Graph capture ahead of prefill GEMM,

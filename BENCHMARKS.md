@@ -1546,3 +1546,64 @@ warp occupancy and 41.48 GB/s DRAM reads. GEMV remains the largest overall decod
 class; attention explains the growth with context. Prefill GEMM remains the
 largest separate latency opportunity. The corrected causal result, including
 the failed constant-savings prediction, is preserved rather than retrofitted.
+
+## Phase 2.2 — value-loop experiment rejected (2026-10-06 local)
+
+**MEASURED_NEGATIVE; Phase-2.1 graph baseline retained.**
+[Audit](PHASE22_AUDIT.md), [initial preregistration](PHASE22_PLAN.md),
+[order-preserving repair preregistration](PHASE22_PLAN_ORDERED.md),
+[full results](PHASE22_RESULTS.md), [commands](PHASE22_REPRO.md).
+
+Initial four-part value summation passed isolated/HF fp16 checks but failed the
+additional registered cross-policy relative-logit bound: 0.02042 >0.01 at
+position 173. It was rejected before timing. The replacement loads four values
+ahead while preserving the original FMA order; it passes bit-exact original
+comparison across 1024 positions and unchanged HF gates, for fp16 and INT8.
+**It is slower, not accepted.** No thresholds changed; failed code/runs retained.
+
+RTX 4060 Laptop/sm_89, driver 561.09, CUDA 12.6.20, batch1, same weights and real
+WikiText IDs. Three independent paired processes per precision; 256 individual
+samples per condition/process, five discarded preceding steps, 16 repeated
+16-token windows; sustained warmup, alternating policy order. SM clock medians
+2595–2610 MHz, memory 8000 MHz, load-proxy temperature medians 55–60 C.
+No concurrent GPU benchmark or compilation. Below is median of process medians
+**[process-median range]**; per-process IQR/all-sample ranges and raw samples
+are retained in [the aggregate](docs/phase22/ordered/aggregate.json).
+
+| Long window 1007..1022; ms/token | Original graph | Ordered4 | Within-process latency increases |
+|---|---:|---:|---:|
+| fp16 GPU-forward event | 1.955 [1.954,1.965] | 2.544 [2.541,2.564] | 30.0–30.5% |
+| INT8 GPU-forward event | 1.657 [1.656,1.662] | 2.252 [2.243,2.253] | 35.4–36.0% |
+| fp16 complete generation wall | 2.187 [2.185,2.275] | 2.795 [2.737,2.820] | 24.0–27.8% |
+| INT8 complete generation wall | 1.944 [1.868,1.981] | 2.565 [2.482,2.709] | 32.0–36.8% |
+
+Generation includes updates, replay, logits D2H, synchronization, finite checks
+and greedy CPU argmax; excludes setup/load/prefill/tokenization. GPU-forward
+excludes host logits/sampling. Long generation throughput falls 457->358 tok/s
+fp16 and 515->390 mixed INT8. Short GPU-forward also regresses consistently >5%.
+P512 prefill stays ~108 ms and head ~0.345 ms. All acceptance criteria fail.
+
+**Mechanism, not just a losing number:** traced long attention grows
+**0.7028->1.2980 ms**, explaining the entire ~0.59-ms forward penalty; GEMV stays
+1.118 ms and graph gaps ~0.011 ms. Same 46 registers/thread, same 12x64 grid,
+same shared memory/occupancy and L1 sectors, no spills, essentially identical
+DRAM bytes. Executed instructions grow 184,968->259,560. Baseline SASS already
+issues **16** independent value loads per hot loop; explicit four-way source
+grouping results in only **4**, with substantially more load-wait samples.
+
+Baseline source PC samples favor **QK dot/key reads (63.8%)** over values (31.8%).
+Sampling proportions are not exact phase times. The next single experiment is
+key-only coalesced staging preserving the per-key dot accumulation order, **not**
+further hand-unrolling of the already-prefetched value loop. This refines the
+prior broad partitioned-attention recommendation; it does not claim that all
+other attention decompositions would fail.
+
+Three fresh matched-value llama F16 host-logits medians are
+1.672/1.757/1.795 ms; original graphs 1.429/1.684/2.026, ordered4
+1.512/1.987/2.617. Arithmetic/D2H precision differences remain disclosed in the
+full report. **Zero additional gap closed**: retained long gap ~0.230 ms;
+ordered4 would enlarge it to ~0.821 ms. No new PyTorch or INT8/Q8_0 ratio claimed.
+
+One server restart interrupted the first fp16 run-3 attempt. Its incomplete
+directory is retained and labelled; only the missing third process was rerun.
+All completed registered runs, including all outliers, enter the aggregate.

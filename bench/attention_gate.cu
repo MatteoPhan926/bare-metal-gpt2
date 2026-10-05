@@ -1,7 +1,9 @@
 // Phase 2.2 correctness/localization. No numerical threshold is relaxed.
 #include "phase2_common.cuh"
 #include "attention_v4.cuh"
+#include "attention_ordered.cuh"
 #include <limits>
+static bool reassociate=false;
 
 static double relative(const half *x,const half *y,size_t n) {
     double diff=0,scale=0;
@@ -40,7 +42,9 @@ static void isolated() {
                 h2d(gpt2_kv_K(&kv,0)+offset,K.data()+offset,D);
                 h2d(gpt2_kv_V(&kv,0)+offset,V.data()+offset,D);
             }
-            gpt2_attn_decode(a,q,&kv,0,len); gpt2_attn_decode_v4(b,q,&kv,0,len);
+            gpt2_attn_decode(a,q,&kv,0,len);
+            if(reassociate) gpt2_attn_decode_v4(b,q,&kv,0,len);
+            else gpt2_attn_decode_ordered4(b,q,&kv,0,len);
             d2h(A.data(),a,A.size()); d2h(B.data(),b,B.size());
             double err=0,mag=0;
             for(int h=0;h<H;h++) {
@@ -59,6 +63,7 @@ static void isolated() {
             }
             worst=std::max(worst,err/(mag+1e-9));
             cross=std::max(cross,relative(B.data(),A.data(),A.size()));
+            if(!reassociate) require(!memcmp(A.data(),B.data(),A.size()*2),"ordered isolated kernel not bit-exact");
             require(worst<=1e-2 && cross<=1e-2,"isolated attention numerical gate");
         }
     }
@@ -71,6 +76,7 @@ static void compare(Phase2State &a,Phase2State &b,Phase2State &speed,bool caps) 
     std::vector<half> x(GPT2_VOCAB),y(x.size()),z(x.size());
     d2h(x.data(),a.logits,x.size()); d2h(y.data(),b.logits,y.size()); d2h(z.data(),speed.logits,z.size());
     require(!memcmp(y.data(),z.data(),y.size()*sizeof(half)),"V4 diagnostic vs speed graph differs");
+    if(!reassociate) require(!memcmp(x.data(),y.data(),x.size()*2),"ordered logits not bit-exact");
     max_logits=std::max(max_logits,relative(y.data(),x.data(),x.size()));
     double mx=-1e300,my=mx,sx=0,sy=0,kl=0;
     for(size_t i=0;i<x.size();i++){mx=std::max(mx,(double)__half2float(x[i]));my=std::max(my,(double)__half2float(y[i]));}
@@ -84,6 +90,7 @@ static void compare(Phase2State &a,Phase2State &b,Phase2State &speed,bool caps) 
     if(caps) {
         x.resize(GPT2_DECODE_CAPS_ROWS*GPT2_N_EMBD);y.resize(x.size());
         d2h(x.data(),a.caps,x.size());d2h(y.data(),b.caps,y.size());
+        if(!reassociate) require(!memcmp(x.data(),y.data(),x.size()*2),"ordered layers not bit-exact");
         for(int r=0;r<GPT2_DECODE_CAPS_ROWS;r++)
             max_layer=std::max(max_layer,relative(y.data()+r*GPT2_N_EMBD,x.data()+r*GPT2_N_EMBD,GPT2_N_EMBD));
         require(max_layer<=1e-2,"cross-policy layer gate");
@@ -106,14 +113,17 @@ static void cache_check(Phase2State &a,Phase2State &b,Phase2State &c,int len,boo
     printf("cache,len=%d,rel=%.9g,poison=%d\n",len,worst,(int)poison);
 }
 int main(int argc,char **argv) {
+    reassociate=argc>2 && !strcmp(argv[2],"v4");
+    printf("attention policy: %s\n",reassociate?"v4 (rejected experiment)":"ordered4");
     if(argc>1 && !strcmp(argv[1],"isolated")){isolated();return 0;}
     Phase2Model model(argc>1?argv[1]:"gemv");auto ids=context_ids();
     Phase2State a(true),b(true),c;
     GPT2GraphSetup t{};
+    auto attention=reassociate?GPT2GraphAttention::V4:GPT2GraphAttention::Ordered4;
     CUDA_CHECK(gpt2_decode_graph_create(&a.graph,model.be,&model.w,&a.kv,&a.s,a.logits,a.caps));
-    CUDA_CHECK(gpt2_decode_graph_create(&b.graph,model.be,&model.w,&b.kv,&b.s,b.logits,b.caps,&t,GPT2GraphAttention::V4));
+    CUDA_CHECK(gpt2_decode_graph_create(&b.graph,model.be,&model.w,&b.kv,&b.s,b.logits,b.caps,&t,attention));
     require(t.kernel_nodes==135 && t.copy_nodes==14 && t.updated_nodes==25,"V4 capture topology");
-    CUDA_CHECK(gpt2_decode_graph_create(&c.graph,model.be,&model.w,&c.kv,&c.s,c.logits,nullptr,&t,GPT2GraphAttention::V4));
+    CUDA_CHECK(gpt2_decode_graph_create(&c.graph,model.be,&model.w,&c.kv,&c.s,c.logits,nullptr,&t,attention));
     require(t.kernel_nodes==135 && t.copy_nodes==0 && t.updated_nodes==25,"V4 speed topology");
     cache_check(a,b,c,0,true);
     require(gpt2_decode_graph_launch(b.graph)==cudaErrorInvalidValue,"unprepared V4 accepted");
