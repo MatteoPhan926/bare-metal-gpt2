@@ -1,0 +1,42 @@
+execution policy: ordinary
+==== STAGE 5 KV-cache decode gate: gemv backend vs HF fp16 oracle (QUALITY_GATES §1 + A1) ====
+decode path: fp16 M=1 GEMV
+[kv] plan: 12 layers x 2 (K,V) x 12 heads x 1024 pos x 64 dim x fp16 = 37.7 MB
+[kv] arena = ONE contiguous alloc; VRAM free 7194/8585 MB -> headroom 7157 MB after cache
+[kv] decode KV traffic = 36.9 KB per token of context (2*L*H*D*2B); at ctx=512 -> 18.9 MB/step
+[meta] prompt=28 eval=512
+
+---- [EQ] cached decode  vs  no-KV recompute  (must agree within fp16 noise) ----
+  max |logit_kv - logit_recompute| = 0.1875   (fp16 ulp @|logit|=128 is 0.125)
+  max KL(recompute || kv)          = 4.883e-04   (threshold < 0.02)  OK
+  argmax agreement                 = 28/28
+  => [EQ]: PASS
+
+---- gate (a): per-layer rel_err, 28 DECODE steps from pos 0 (cache built by the M=1 path) ----
+  embed      rel_err = 0.000e+00  OK
+  block_0    rel_err = 3.285e-04  OK
+  block_1    rel_err = 2.092e-04  OK
+  block_2    rel_err = 2.537e-05  OK
+  block_3    rel_err = 2.385e-05  OK
+  block_4    rel_err = 2.264e-05  OK
+  block_5    rel_err = 2.190e-05  OK
+  block_6    rel_err = 2.685e-05  OK
+  block_7    rel_err = 2.123e-05  OK
+  block_8    rel_err = 2.107e-05  OK
+  block_9    rel_err = 4.197e-05  OK
+  block_10   rel_err = 4.197e-05  OK
+  block_11   rel_err = 7.194e-04  OK
+  final_ln   rel_err = 1.073e-03  OK
+  => gate (a): PASS
+
+---- gate (b): greedy N=128 teacher-forced via KV decode (bug iff margin >= 3*fp16_ulp — A1) ----
+    pos  28: pred 1663 != ref 7866 (margin 0.1250 < 3*ulp 0.3750 @|logit|~135 -> tolerated near-tie)
+  teacher-forced (A1): 127/128 match, 1 tolerated near-tie, 0 bug
+  => gate (b): PASS
+
+---- gate (c): eval distribution, 512 sequential decode steps (PRIMARY max KL < 0.02 — A1) ----
+  [PRIMARY] max KL(ref||ours) = 1.953e-03   (threshold < 0.02)  OK
+  [diag]    top-1 agreement  = 505/512 (98.63%)
+  => gate (c): PASS
+
+==== VERDICT [gemv, KV-cache decode]: EQ=PASS (a)=PASS (b)=PASS (c)=PASS -> ALL PASS ====

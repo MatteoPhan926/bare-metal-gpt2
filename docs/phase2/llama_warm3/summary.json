@@ -1,0 +1,104 @@
+[
+  {
+    "experiment": "forward_host",
+    "policy": "llama_f16",
+    "ctx": 128,
+    "n": 256,
+    "event_ms": {
+      "median": 0.0,
+      "min": 0.0,
+      "max": 0.0,
+      "q1": 0.0,
+      "q3": 0.0
+    },
+    "wall_ms": {
+      "median": 1.6671,
+      "min": 1.6351,
+      "max": 2.5513,
+      "q1": 1.6504,
+      "q3": 1.683925
+    },
+    "enqueue_ms": {
+      "median": 0.0,
+      "min": 0.0,
+      "max": 0.0,
+      "q1": 0.0,
+      "q3": 0.0
+    },
+    "update_ms": {
+      "median": 0.0,
+      "min": 0.0,
+      "max": 0.0,
+      "q1": 0.0,
+      "q3": 0.0
+    }
+  },
+  {
+    "experiment": "forward_host",
+    "policy": "llama_f16",
+    "ctx": 512,
+    "n": 256,
+    "event_ms": {
+      "median": 0.0,
+      "min": 0.0,
+      "max": 0.0,
+      "q1": 0.0,
+      "q3": 0.0
+    },
+    "wall_ms": {
+      "median": 1.75435,
+      "min": 1.6967,
+      "max": 4.2818,
+      "q1": 1.7344499999999998,
+      "q3": 1.803225
+    },
+    "enqueue_ms": {
+      "median": 0.0,
+      "min": 0.0,
+      "max": 0.0,
+      "q1": 0.0,
+      "q3": 0.0
+    },
+    "update_ms": {
+      "median": 0.0,
+      "min": 0.0,
+      "max": 0.0,
+      "q1": 0.0,
+      "q3": 0.0
+    }
+  },
+  {
+    "experiment": "forward_host",
+    "policy": "llama_f16",
+    "ctx": 1007,
+    "n": 256,
+    "event_ms": {
+      "median": 0.0,
+      "min": 0.0,
+      "max": 0.0,
+      "q1": 0.0,
+      "q3": 0.0
+    },
+    "wall_ms": {
+      "median": 1.7842,
+      "min": 1.7457,
+      "max": 2.0758,
+      "q1": 1.7695,
+      "q3": 1.8094999999999999
+    },
+    "enqueue_ms": {
+      "median": 0.0,
+      "min": 0.0,
+      "max": 0.0,
+      "q1": 0.0,
+      "q3": 0.0
+    },
+    "update_ms": {
+      "median": 0.0,
+      "min": 0.0,
+      "max": 0.0,
+      "q1": 0.0,
+      "q3": 0.0
+    }
+  }
+]

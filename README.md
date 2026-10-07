@@ -11,10 +11,29 @@ where each one comes from.
 
 ---
 
-## Where it lands
+## Phase 2
 
-Same GPU (RTX 4060 Laptop, sm_89), same weights, same session, matched precision, medians not best-of-N.
-Decode is true M=1 in all three engines, so it is a like-for-like comparison.
+The fixed Phase-1 ladder is now open to measured follow-up experiments. Start with
+[PHASE2_AUDIT.md](PHASE2_AUDIT.md), the immutable [pre-registration](PHASE2_PLAN.md),
+and [PHASE2_RESULTS.md](PHASE2_RESULTS.md). The first experiment is optional CUDA
+Graph decode: the original 135 arithmetic kernels, with 25 changing node parameters.
+Phase-1 backends and build scripts remain available.
+
+**Validated on the target GPU:** across three independent runs, graph replay
+reduces complete fp16 generation latency by **22–30% at short context** and
+**10–12% at long context**, with bit-exact eager/graph results and unchanged HF
+gates. The short llama.cpp median gap is closed in the new controlled harness;
+about **56%** of the long-context gap is removed, subject to the documented
+cross-engine arithmetic differences. Prefill is unchanged. Build and reproduce
+with [PHASE2_REPRO.md](PHASE2_REPRO.md); graph execution is opt-in.
+
+## Where Phase 1 landed (historical snapshot)
+
+Same GPU (RTX 4060 Laptop, sm_89), nominal fp16/F16, medians not best-of-N.
+These historical instruments have different boundaries: PyTorch prefill excludes
+the head, our decode repeats a fixed position without sampling, and llama.cpp
+advances a short window. F16 GGUF also retains some fp32 tensors. Do not treat
+this table as an exactly matched modern benchmark; Phase 2 supplies new controls.
 
 | | **this engine** (fp16) | **llama.cpp** F16 (CUDA) | **PyTorch** fp16 eager |
 |---|---|---|---|
@@ -27,32 +46,29 @@ Decode is true M=1 in all three engines, so it is a like-for-like comparison.
 **Decode runs at 76–83% of llama.cpp and 4.2–4.8× faster than PyTorch eager. Prefill is 10–14× slower
 than llama.cpp.**
 
-llama.cpp is faster, and I would rather explain the gap than bury it. At P=512 the 14.44× decomposes
-into two measured factors:
+At P=512 the historical 14.44× ratio can be expressed using measured ceilings:
 
 ```
-14.44x  =  3.12x   tensor cores (WMMA)
+14.44x  =  3.12x   ratio of compute ceilings (not a measured WMMA speedup)
                    31.51 TFLOP/s measured tensor-GEMM ceiling
                  / 10.10 TFLOP/s measured achievable CUDA-core GEMM ceiling
-        x  4.63x   GEMM maturity
+        x  4.63x   residual efficiency ratio (not an isolated maturity experiment)
                    llama.cpp reaches 39.3% of its ceiling; this engine reaches 8.5% of its own
 ```
 
-The first factor is a ceiling this engine cannot reach, because it uses no tensor cores — that was a
-scope decision, not an oversight. It is the ratio of two independently microbenchmarked peaks. The second
-is the distance between a textbook 16×16 shared-memory tile and a register-tiled, double-buffered,
-vectorized GEMM; it is the residual, and it equals the ratio of how much of its own ceiling each engine
-reaches. Together the two measured factors account for the full gap.
+This identity motivates a prefill GEMM ladder; it does not causally allocate the
+gap. No tensor-core intervention or register-tiling ablation was performed in
+Phase 1. The shipped prefill GEMM remains a 16×16 shared-memory tile.
 
-Fusion is not part of the answer. Attention is 5.3% of prefill after Stage 3b, and the ~123 kernel
-launches in a prefill forward cost a small fraction of it, well under 1% — the per-op profile's
-sum-of-parts lands within 0.7% of the uninstrumented forward, which bounds the per-kernel overhead from
-above.
+The historical per-op profile assigns 5.3% of prefill to attention. Its sum being
+within 0.7% of forward time does **not** bound launch overhead: both event-timed
+quantities include scheduling gaps. One unsuccessful LayerNorm fusion does not
+prove that every possible fusion would lose.
 
-The decode gap runs 1.24× at ctx=128 and 1.31× at ctx=1023. At short context it is almost entirely fixed
-per-step overhead: our decode step is 135 kernel launches, where llama.cpp captures the whole step in a
-CUDA graph. By ctx=1023 that fixed cost still accounts for 73% of the gap, and the remaining 27% is our
-attention kernel scaling worse with context than theirs.
+The historical decode gap motivated the Phase-2 graph experiment. The previous
+"73% fixed overhead / 27% attention" split was inferred from cross-engine timing
+differences, not measured by removing launches. See the new intervention and
+timeline evidence in [PHASE2_RESULTS.md](PHASE2_RESULTS.md).
 
 One number is worth reading twice: **PyTorch eager's trunk prefill is 9.441 ms at P=128 and 9.395 ms at
 P=512.** Identical, for four times the work. It is host-dispatch-bound at this model size, which is why
@@ -85,8 +101,9 @@ assuming.
 **Stage 3a — fused LayerNorm + matmul. Reverted.** It is correct, it passes every gate, and it is
 **2.9% slower**, identically at three shapes, with disjoint min/max ranges. The tiled GEMM re-stages each
 A tile once per column tile — 144× for the QKV shape — so an on-the-fly fusion recomputes the LayerNorm
-144 times to save one activation round-trip. A fusion pays only when the producer's output is consumed
-once. The kernel is preserved in git history; the negative result is preserved in BENCHMARKS.md.
+144 times to save one activation round-trip. This fusion lost its reuse advantage.
+The cited implementation commit is absent from the public clone's history;
+the recorded negative result is preserved in BENCHMARKS.md.
 
 **Stage 4 — weight-only INT8.** The pre-registered scheme (symmetric, per-channel, all 49 matmul weights)
 **failed both gates**: max KL 0.257 against a 0.02 bound, and Δppl +0.549 against a +0.3 bound frozen
@@ -180,15 +197,11 @@ bench\microbench.exe cudacore       :: the measured CUDA-core ceiling behind eve
 bench\profile_matmul.exe bw 50257 768  :: the M-sweep: why tiling loses at M=1 on the tied head
 ```
 
-**`bench_decode`'s argument is `iters`, not decode steps** — worth stating plainly, because reading `50` as
-"50 tokens" would put it under [BENCH_PROTOCOL.md](BENCH_PROTOCOL.md) §6's N ≥ 256. `iters` is the number of
-**timed A/B samples**, and each sample times a **batch of 4–16 decode steps and divides** — so the reported
-figure is still ms *per token*, and `50` executes **800 timed decode steps**. `50` is the ledger value: it
-is the `iters=50` that produced Stage 5's recorded block. The batching exists because a ~2 ms step spanning
-135 kernel launches is sensitive to host jitter — a single Windows hiccup inflates one sample by ~30% and
-destroys min/max disjointness. It amortises jitter across the batch; it does **not** change what is
-measured, and it is the §6 remedy ("spread is wide → widen N, **never** pick the good one"), not an evasion
-of it.
+**`bench_decode`'s argument is `iters`, not decode steps.** At batch=16, `50`
+means 50 independent batch averages over 800 forwards, **not 800 independent
+per-token samples**. Batching changes the latency distribution and is not a
+substitute for the protocol's 256 per-token samples. The Phase-2 harness retains
+both instruments, labels them separately, and adds actual host-sampled generation.
 
 **Reproducing the llama.cpp baseline** — three traps, all of which cost me time:
 
@@ -229,10 +242,10 @@ The methodology is the point, so it is written down and it was written down *fir
 
 ## Scope
 
-Forward inference, batch=1, one model, one GPU, the specific ladder above. Not a framework, not a serving
-system, not multi-GPU, not a llama.cpp clone. Tensor cores (WMMA), kernel fusion beyond Stage 3, and CUDA
-graph capture are named in the roofline as the levers that would close the remaining gap — and are
-deliberately not built, which is why the gap can be attributed to them rather than hand-waved.
+Forward inference, batch=1, one model, one GPU. Not a framework, serving system,
+multi-GPU runtime, or llama.cpp clone. Phase 2 tests graph capture; tensor cores
+and mature prefill GEMM remain unimplemented hypotheses. Their absence alone
+does not quantify how much of a measured gap they would close.
 
 **INT4 is not attempted, and the reason is measured rather than declined.** Its bound is pre-registered and
 **LOCKED** (Δppl ≤ +1.0, [QUALITY_GATES.md](QUALITY_GATES.md) §2), but the shipped INT8 build clears the KL

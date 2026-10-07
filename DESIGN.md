@@ -1,6 +1,11 @@
 # DESIGN.md — Mini Inference Engine (GPT-2-124M · C → CUDA)
 ### Design log: the method, decided before the code
 
+> **Phase 2 (2026-10-05):** the fixed ladder below is historical, not a ban on
+> further experiments. [PHASE2_AUDIT.md](PHASE2_AUDIT.md) separates implemented,
+> measured and inferred facts. [PHASE2_PLAN.md](PHASE2_PLAN.md) preregisters the
+> first follow-up; [PHASE2_RESULTS.md](PHASE2_RESULTS.md) records its outcome.
+
 > **Locked selections.** G1's "pick one model" was resolved to **GPT-2-124M** at Phase 0, and every
 > artifact since assumes it (`model/config.h`, `tools/export_gpt2.py`). The `[VERIFY]` tags in §3 that
 > concern the roofline denominators are **discharged** — Phase −1 measured them; see ROOFLINE §6 and
@@ -222,8 +227,10 @@ of each kill-test is recorded, which is the whole point of pre-registering them.
     > Restated against the measured 10.10 TF. **The GFLOP/s did not change; only the denominator did.**
 - **[CONJECTURE]** KV cache gives ≥ **Y×** decode speedup. *Kill-test:* measure decode tok/s with and
   without.
-  → **`[OPEN — Stage 5]`** and note Stage 4's finding: the KV cache alone will not surface the INT8 decode
-    win unless the M=1 path uses a **GEMV-shaped kernel** instead of the 16×16 tiled GEMM.
+  → **`[CLOSED — Stage 5; stale OPEN label corrected in Phase 2]`** The cache and
+    true M=1 GEMV are implemented. BENCHMARKS records 14.7× / 56.0× / 98.3× versus
+    recompute at contexts 128 / 512 / 1023. Those are historical measurements;
+    the original fixed-position harness excludes sampling.
 > **No stated speedup is a result until a validated, reproducible measurement backs it.**
 
 ---
@@ -282,3 +289,28 @@ are true; a systems interviewer will probe exactly the methodology, so honesty *
 - Optional companion `perf_store.md` (a "fuel inventory" like the sibling project's physics store):
   the durable systems facts (memory hierarchy numbers, roofline formulas, common CUDA pitfalls) to
   reason from without re-looking-them-up — build it only if the reasoning starts repeating.
+
+## §11. Phase-2 decode execution policy
+
+An optional graph adapter captures `gpt2_decode_step_cuda` itself, not a second
+forward implementation. Weight, scratch, logits and the single KV arena stay at
+stable addresses. The only dynamic parameters are token/position in embedding,
+12 cache-write positions, and 12 attention lengths/shared-memory sizes: 25
+kernel nodes out of 135. No new device input buffer, quantization, arithmetic
+kernel, fusion or sampling policy was introduced.
+
+All TUs in the separate graph build use the capturable per-thread default stream;
+ordinary execution in that same binary is the causal baseline. A separately
+built legacy-stream harness checks the stream-policy confound. Graph creation
+restores the host cache length changed during capture; capture itself does not
+execute GPU work. One graph supports all positions, reset/reuse, and either
+fp16 or the existing mixed INT8 backend. Host argmax and logits transfer remain
+outside capture. The borrowed allocations must outlive the graph; owner thread,
+device, layout, token bounds and `position == cache length` are checked.
+
+The adapter is accepted **opt-in**, not silently enabled for old callers. Three
+independent same-binary A/B runs pass the preregistered whole-generation criterion;
+exact/HF gates pass without threshold changes. Ordinary remains the default and
+the fallback for short/unamortized jobs or unstable addresses. Setup cost, timing
+boundaries and limitations are in [PHASE2_RESULTS.md](PHASE2_RESULTS.md);
+[PHASE2_REPRO.md](PHASE2_REPRO.md) supplies commands and API ownership rules.

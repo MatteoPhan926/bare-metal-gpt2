@@ -20,6 +20,9 @@
 #include "kernels.cuh"
 #include "kvcache.cuh"
 #include "common.cuh"
+#ifdef GPT2_ENABLE_GRAPHS
+#include "decode_graph.cuh"
+#endif
 #include <cstdio>
 #include <cstdlib>
 #include <cstring>
@@ -27,6 +30,7 @@
 #include <cmath>
 #include <vector>
 #include <algorithm>
+#include <limits>
 
 #define E  GPT2_N_EMBD
 #define V  GPT2_VOCAB
@@ -51,11 +55,13 @@ static float *load_f32(const char*p,size_t n){ FILE*f=fopen(p,"rb"); float*q=(fl
 static float *dl_f16(const half*d,size_t n){ std::vector<half> h(n); d2h(h.data(),d,n);
     float*o=(float*)malloc(n*sizeof(float)); for(size_t i=0;i<n;i++)o[i]=__half2float(h[i]); return o; }
 static double rel_err(const float*a,const float*b,size_t n){ double md=0,mr=0;
-    for(size_t i=0;i<n;i++){ double d=fabs((double)a[i]-(double)b[i]); if(d>md)md=d;
+    for(size_t i=0;i<n;i++){ if(!std::isfinite(a[i]) || !std::isfinite(b[i])) return std::numeric_limits<double>::infinity();
+        double d=fabs((double)a[i]-(double)b[i]); if(d>md)md=d;
         double r=fabs((double)b[i]); if(r>mr)mr=r; } return md/(mr+1e-9); }
 static int argmax(const float*v,int n){ int m=0; for(int i=1;i<n;i++) if(v[i]>v[m])m=i; return m; }
 static double kl_row(const float*ref,const float*ours,int n){ double mr=-1e300,mo=-1e300;
-    for(int i=0;i<n;i++){ if(ref[i]>mr)mr=ref[i]; if(ours[i]>mo)mo=ours[i]; }
+    for(int i=0;i<n;i++){ if(!std::isfinite(ref[i]) || !std::isfinite(ours[i])) return std::numeric_limits<double>::infinity();
+        if(ref[i]>mr)mr=ref[i]; if(ours[i]>mo)mo=ours[i]; }
     double sr=0,so=0; for(int i=0;i<n;i++){ sr+=exp((double)ref[i]-mr); so+=exp((double)ours[i]-mo); }
     double lsr=mr+log(sr),lso=mo+log(so),kl=0;
     for(int i=0;i<n;i++){ double lpr=(double)ref[i]-lsr,lpo=(double)ours[i]-lso; kl+=exp(lpr)*(lpr-lpo); }
@@ -68,17 +74,43 @@ static void kv_decode_seq(const GPT2Backend *be, const GPT2WeightsGPU *w, GPT2KV
                           const int *ids, int n, GPT2ScratchGPU *s, half *d_logits_all, half *d_caps) {
     gpt2_kv_reset(kv);
     half *step_caps = d_caps ? dmalloc<half>((size_t)GPT2_DECODE_CAPS_ROWS*E) : nullptr;
+#ifdef GPT2_ENABLE_GRAPHS
+    bool graph_mode = getenv("GPT2_DECODE") && !strcmp(getenv("GPT2_DECODE"), "graph");
+    GPT2DecodeGraph *graph = nullptr;
+    half *step_logits = graph_mode ? dmalloc<half>(V) : nullptr;
+    if (graph_mode) CUDA_CHECK(gpt2_decode_graph_create(&graph,be,w,kv,s,step_logits,step_caps));
+#endif
     for (int t = 0; t < n; t++) {
+#ifdef GPT2_ENABLE_GRAPHS
+        if (graph_mode) {
+            CUDA_CHECK(gpt2_decode_graph_step(graph, ids[t], t));
+            CUDA_CHECK(cudaMemcpyAsync(d_logits_all+(size_t)t*V,step_logits,V*sizeof(half),cudaMemcpyDeviceToDevice));
+        } else
+#endif
         gpt2_decode_step_cuda(be, w, kv, ids[t], t, s, d_logits_all + (size_t)t*V, step_caps);
         if (d_caps) for (int r = 0; r < GPT2_DECODE_CAPS_ROWS; r++)
             CUDA_CHECK(cudaMemcpy(d_caps + ((size_t)r*n + t)*E, step_caps + (size_t)r*E,
                                   E*sizeof(half), cudaMemcpyDeviceToDevice));
     }
     CUDA_CHECK(cudaDeviceSynchronize());
+#ifdef GPT2_ENABLE_GRAPHS
+    gpt2_decode_graph_destroy(graph);
+    if (step_logits) cudaFree(step_logits);
+#endif
     if (step_caps) cudaFree(step_caps);
 }
 
 int main(int argc, char **argv) {
+    const char *policy = getenv("GPT2_DECODE");
+    if (policy && strcmp(policy,"ordinary") && strcmp(policy,"graph")) {
+        fprintf(stderr,"unknown GPT2_DECODE policy\n"); return 1;
+    }
+#ifndef GPT2_ENABLE_GRAPHS
+    if (policy && !strcmp(policy,"graph")) {
+        fprintf(stderr,"use kv_gate_graph.exe (build_phase2.bat) for graph mode\n"); return 1;
+    }
+#endif
+    printf("execution policy: %s\n", policy ? policy : "ordinary");
     const char *wpath = argc>1? argv[1] : "weights/gpt2_124m_fp32.bin";
     const char *refdir= argc>2? argv[2] : "refdumps/fp16";
     const char *meta  = argc>3? argv[3] : "refdumps/meta.json";

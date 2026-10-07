@@ -1,0 +1,4 @@
+timestamp, name, driver_version, pstate, clocks.current.sm [MHz], clocks.current.memory [MHz], temperature.gpu, power.draw [W], utilization.gpu [%]
+2026/10/05 17:28:43.306, NVIDIA GeForce RTX 4060 Laptop GPU, 561.09, P0, 2595 MHz, 8000 MHz, 58, 20.58 W, 0 %
+2026/10/05 17:28:43.513, NVIDIA GeForce RTX 4060 Laptop GPU, 561.09, P0, 2595 MHz, 8000 MHz, 58, 22.79 W, 0 %
+2026/10/05 17:28:43.735, NVIDIA GeForce RTX 4060 Laptop GPU, 561.09, P0, 2595 MHz, 8000 MHz, 58, 45.10 W, 35 %

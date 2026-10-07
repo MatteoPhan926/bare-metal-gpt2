@@ -1,6 +1,12 @@
 # ROOFLINE.md — Pre-registered ceilings & plausibility oracle
 ### GPT-2-124M · RTX 4060 Laptop (105W) · companion to DESIGN.md
 
+> **Phase-2 correction (2026-10-05):** empirical copy/cuBLAS peaks are useful
+> measured reference ceilings, not immutable physical caps. Logical model bytes
+> are not necessarily DRAM bytes (cache hits, padding and redundant loads matter).
+> Any apparent ceiling violation still requires investigation, never a speed
+> claim from inspection alone. See §8 for the graph intervention and new counters.
+
 > **What this file is.** Written *before any kernel exists*, so that every number measured later has a
 > ceiling to be checked against. A measured number **above** a ceiling here is a
 > **measurement bug, not a result** (DESIGN.md §0, firewall 3). Ceilings are theoretical (100% of the
@@ -380,3 +386,45 @@ For every measurement:
 - **Below** ceiling but < ~0.5× → profile; there is headroom the roofline says exists.
 - **0.55–0.85×** of an honest ceiling, reproducible, apples-to-apples → believable. Record in
   `BENCHMARKS.md` with config + clocks + seed + median±spread, **prefill and decode separately**.
+
+## 8. Phase 2: launch overhead removed; attention is not a saturated-bandwidth kernel
+
+Same RTX 4060 Laptop, driver 561.09, CUDA 12.6. Re-measured 256-MiB bandwidth
+probe, 10 warmups + 50 samples: **copy 233.5 [229.5,234.4] GB/s; read 249.4
+[243.0,249.9] GB/s**. Historical 233.4/248.9 denominators remain representative.
+[Raw run](docs/phase2/bandwidth/stdout.txt).
+
+The graph changes scheduling, not FLOPs or weight format. Across three runs,
+advancing fp16 forward event medians are **1.377 / 1.637 / 1.959 ms** for windows
+128..143 / 512..527 / 1007..1022. INT8 is **1.089 / 1.332 / 1.661 ms**.
+These are median-of-process-medians, not best cases; full spreads are in
+[PHASE2_RESULTS.md](PHASE2_RESULTS.md) and the linked raw samples.
+
+For a better logical-byte estimate, the 49 fp16 linear matrices contain
+247.064 MB, not the whole 248.880-MB allocation. Add ~0.243 MB of scalar weights,
+one token/position embedding row each, and KV reads/writes. The whole position
+embedding is not streamed each step. The resulting logical-throughput/copy-BW
+reference is approximately **79% short / 62% long** for fp16 and **66% / 52%** for
+mixed INT8. No ceiling is crossed, even before considering cache effects.
+This is a plausibility estimate, not a DRAM counter or a universal hard bound.
+
+Nsight Systems confirms 135 kernels in either policy. Internal inter-kernel gaps
+drop from **0.537 to 0.012 ms** at ctx128 and **0.251 to 0.011 ms** at ctx1023.
+Node tracing/clock changes perturb absolute times; use unprofiled runs for speed.
+After graph replay, GEMV is the largest GPU-time class (~82% short / 58% long);
+attention grows from ~9% to ~36%. That makes attention the next decode-scaling
+target, not more node-update tuning. This supersedes the inferred 73/27 gap split.
+
+One long-context attention launch under Nsight Compute has **12 blocks × 64
+threads on 24 SMs**, 46 registers/thread, 4,352 B dynamic + 256 B static shared
+memory (5,632 B allocated including overhead), and **4.13% achieved active-SM warp
+occupancy**. DRAM reads are 3.160 MB at only **41.48 GB/s**; L1 load sectors/request
+are **835632/49176 = 16.99**. This agrees with the source's strided key reads and
+serial value accumulation with very little parallel work. It is **not** a
+saturated-DRAM-bandwidth explanation merely because attention has low arithmetic
+intensity. NCU replay ran at ~1.919 GHz: its 76.192-us launch time is diagnostic,
+not the unprofiled engine's latency. [Counters with units](docs/phase2/ncu_attention_metrics/selected_metrics.json).
+
+Prefill is unchanged (~107.9 ms at P512). No new tensor-core ceiling or WMMA
+speedup was measured. The old 3.12× × 4.63× factorization is an arithmetic
+identity using empirical peaks, not two independently isolated causal effects.

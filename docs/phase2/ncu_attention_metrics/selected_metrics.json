@@ -1,0 +1,62 @@
+{
+  "Block Size": {
+    "value": "(64, 1, 1)",
+    "unit": ""
+  },
+  "Grid Size": {
+    "value": "(12, 1, 1)",
+    "unit": ""
+  },
+  "gpu__time_duration.sum": {
+    "value": "76.192000",
+    "unit": "us"
+  },
+  "sm__cycles_elapsed.avg.per_second": {
+    "value": "1.918850",
+    "unit": "Ghz"
+  },
+  "launch__registers_per_thread": {
+    "value": "46",
+    "unit": "register/thread"
+  },
+  "launch__shared_mem_per_block": {
+    "value": "5.632000",
+    "unit": "Kbyte/block"
+  },
+  "launch__shared_mem_per_block_static": {
+    "value": "256",
+    "unit": "byte/block"
+  },
+  "launch__shared_mem_per_block_dynamic": {
+    "value": "4.352000",
+    "unit": "Kbyte/block"
+  },
+  "launch__waves_per_multiprocessor": {
+    "value": "0.03",
+    "unit": ""
+  },
+  "sm__warps_active.avg.pct_of_peak_sustained_active": {
+    "value": "4.126696",
+    "unit": "%"
+  },
+  "sm__throughput.avg.pct_of_peak_sustained_elapsed": {
+    "value": "3.627882",
+    "unit": "%"
+  },
+  "dram__bytes_read.sum": {
+    "value": "3.160192",
+    "unit": "Mbyte"
+  },
+  "dram__bytes_read.sum.per_second": {
+    "value": "41.476690",
+    "unit": "Gbyte/s"
+  },
+  "l1tex__t_sectors_pipe_lsu_mem_global_op_ld.sum": {
+    "value": "835632.000000",
+    "unit": "sector"
+  },
+  "l1tex__t_requests_pipe_lsu_mem_global_op_ld.sum": {
+    "value": "49,176",
+    "unit": ""
+  }
+}
