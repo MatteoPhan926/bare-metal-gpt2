@@ -1,0 +1,12 @@
+kernels_naive.obj
+kernels_tiled.obj
+kernels_fused.obj
+kernels_quant.obj
+kvcache.obj
+forward_cuda.obj
+decode_graph.obj
+attention_v4.obj
+weights.obj
+attention_gate.cu
+tmpxft_0000431c_00000000-10_attention_gate.cudafe1.cpp
+   Creating library bench\attention_gate_phase22.lib and object bench\attention_gate_phase22.exp

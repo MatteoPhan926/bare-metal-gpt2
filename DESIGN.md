@@ -314,3 +314,23 @@ exact/HF gates pass without threshold changes. Ordinary remains the default and
 the fallback for short/unamortized jobs or unstable addresses. Setup cost, timing
 boundaries and limitations are in [PHASE2_RESULTS.md](PHASE2_RESULTS.md);
 [PHASE2_REPRO.md](PHASE2_REPRO.md) supplies commands and API ownership rules.
+
+## §12. Phase-2.2 rejected value-loop experiment
+
+The accepted graph and its original attention remain the default. A separate
+build exposes explicit research policies for replacing only its twelve
+attention nodes, preserving all 25 changing-node updates and stable buffers.
+`V4` regroups four fp32 partial value sums and failed the extra preregistered
+cross-policy numerical bound (not the original HF fp16 gate). `Ordered4`
+preserves arithmetic order and passed bit-exact checks, but regressed long
+GPU-forward latency by 30–36%. Neither policy is promoted.
+
+Generated code, not source appearance, explains the loss: the original compiler
+hot loop already issues sixteen independent value loads; explicit four-load
+grouping reduced that parallelism and increased executed instructions by 40%.
+Registers, occupancy, logical bytes, measured L1 sectors and surrounding GEMVs
+stayed essentially fixed. Baseline PC samples implicate QK/key accesses more
+strongly than values. This motivates a key-only staging experiment preserving
+dot-product order, not a combined attention/GEMV rewrite. See
+[PHASE22_RESULTS.md](PHASE22_RESULTS.md); both preregistrations and failed
+attempts are retained. Phase-2.1 historical results above remain historical.

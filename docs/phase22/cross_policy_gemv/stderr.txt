@@ -1,0 +1,2 @@
+[weights] loaded weights/gpt2_124m_fp32.bin : 124439808 floats (497.8 MB) OK
+FAIL: cross-policy distribution gate

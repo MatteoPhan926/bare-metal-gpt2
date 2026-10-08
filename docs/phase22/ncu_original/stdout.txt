@@ -1,0 +1,32 @@
+==PROF== Connected to process 17096 (E:\Downloads\metal_gpt\bench\bench_graph_phase22.exe)
+==PROF== Profiling "k_attn_decode": 0%....50%....100% - 39 passes
+metadata,stream,per-thread
+[kv] plan: 12 layers x 2 (K,V) x 12 heads x 1024 pos x 64 dim x fp16 = 37.7 MB
+[kv] arena = ONE contiguous alloc; VRAM free 7171/8585 MB -> headroom 7133 MB after cache
+[kv] decode KV traffic = 36.9 KB per token of context (2*L*H*D*2B); at ctx=512 -> 18.9 MB/step
+[kv] plan: 12 layers x 2 (K,V) x 12 heads x 1024 pos x 64 dim x fp16 = 37.7 MB
+[kv] arena = ONE contiguous alloc; VRAM free 7110/8585 MB -> headroom 7073 MB after cache
+[kv] decode KV traffic = 36.9 KB per token of context (2*L*H*D*2B); at ctx=512 -> 18.9 MB/step
+metadata,experiment,phase22_ordered4
+metadata,backend,gemv
+metadata,samples_per_condition,16
+sample,experiment,policy,ctx,pos,rep,token,event_ms,wall_ms,enqueue_ms,update_ms
+sample,setup,process_cold,128,128,-1,0,3.263400000,6.801100000,1.603900000,1.230400000
+sample,profile,original,1023,1023,0,383,4055.771240234,4056.075200000,4055.242800000,0.018600000
+sample,profile,original,1023,1023,1,383,2.483200073,2.501300000,1.342100000,0.032300000
+sample,profile,original,1023,1023,2,383,2.481152058,2.505900000,1.348500000,0.024300000
+sample,profile,original,1023,1023,3,383,2.472959995,2.487700000,1.354500000,0.031000000
+sample,profile,original,1023,1023,4,383,2.456576109,2.469900000,1.418200000,0.020100000
+sample,profile,original,1023,1023,5,383,2.542592049,2.558700000,1.551000000,0.016700000
+sample,profile,original,1023,1023,6,383,2.458623886,2.474400000,1.542400000,0.019400000
+sample,profile,original,1023,1023,7,383,2.455552101,2.473300000,1.567900000,0.017800000
+sample,profile,original,1023,1023,8,383,2.498559952,2.530800000,1.771400000,0.032100000
+sample,profile,original,1023,1023,9,383,2.457600117,2.471400000,1.502000000,0.020400000
+sample,profile,original,1023,1023,10,383,2.450432062,2.464000000,1.355000000,0.017400000
+sample,profile,original,1023,1023,11,383,2.452480078,2.465200000,1.357000000,0.016600000
+sample,profile,original,1023,1023,12,383,2.451456070,2.466500000,1.440600000,0.017600000
+sample,profile,original,1023,1023,13,383,2.461695910,2.476000000,1.329400000,0.019400000
+sample,profile,original,1023,1023,14,383,2.509824038,2.537500000,1.390800000,0.017000000
+sample,profile,original,1023,1023,15,383,2.495487928,2.521400000,1.774000000,0.032600000
+==PROF== Disconnected from process 17096
+==PROF== Report: E:\Downloads\metal_gpt\docs\phase22\ncu_original\attention.ncu-rep

@@ -5,6 +5,7 @@
 #include <cuda_runtime.h>
 
 struct GPT2DecodeGraph;
+enum class GPT2GraphAttention { Original, V4, Ordered4 };
 struct GPT2GraphSetup {
     double capture_ms, instantiate_ms, upload_ms;
     size_t kernel_nodes, copy_nodes, updated_nodes;
@@ -16,7 +17,8 @@ struct GPT2GraphSetup {
 // Capture does not execute the step or change kv.len. logits is required.
 cudaError_t gpt2_decode_graph_create(GPT2DecodeGraph **out, const GPT2Backend *be,
     const GPT2WeightsGPU *w, GPT2KVCache *kv, GPT2ScratchGPU *s,
-    half *logits, half *caps, GPT2GraphSetup *setup = nullptr);
+    half *logits, half *caps, GPT2GraphSetup *setup = nullptr,
+    GPT2GraphAttention attention = GPT2GraphAttention::Original);
 cudaError_t gpt2_decode_graph_step(GPT2DecodeGraph *g, int token, int pos);
 
 // Split only for attribution: production calls step (prepare + launch).

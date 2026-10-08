@@ -27,6 +27,16 @@ about **56%** of the long-context gap is removed, subject to the documented
 cross-engine arithmetic differences. Prefill is unchanged. Build and reproduce
 with [PHASE2_REPRO.md](PHASE2_REPRO.md); graph execution is opt-in.
 
+**Phase 2.2: useful negative result.** A value-only attention experiment did
+not improve decode. Four partial sums failed an additional preregistered
+numerical bound; an order-preserving four-load variant passed bit-exact/HF
+checks but made long GPU decode **30% slower (fp16), 36% slower (mixed INT8)**.
+The compiler already overlaps sixteen value loads in the original kernel.
+Source-correlated profiles instead put ~64% of baseline attention samples in
+the strided key-dot-product phase. The accepted graph baseline is unchanged;
+no llama.cpp gap was closed. See [PHASE22_RESULTS.md](PHASE22_RESULTS.md),
+[audit](PHASE22_AUDIT.md), and [reproduction](PHASE22_REPRO.md).
+
 ## Where Phase 1 landed (historical snapshot)
 
 Same GPU (RTX 4060 Laptop, sm_89), nominal fp16/F16, medians not best-of-N.

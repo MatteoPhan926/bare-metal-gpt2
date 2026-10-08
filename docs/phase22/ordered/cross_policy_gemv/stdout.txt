@@ -1,0 +1,26 @@
+attention policy: ordered4
+[kv] plan: 12 layers x 2 (K,V) x 12 heads x 1024 pos x 64 dim x fp16 = 37.7 MB
+[kv] arena = ONE contiguous alloc; VRAM free 7194/8585 MB -> headroom 7157 MB after cache
+[kv] decode KV traffic = 36.9 KB per token of context (2*L*H*D*2B); at ctx=512 -> 18.9 MB/step
+[kv] plan: 12 layers x 2 (K,V) x 12 heads x 1024 pos x 64 dim x fp16 = 37.7 MB
+[kv] arena = ONE contiguous alloc; VRAM free 7133/8585 MB -> headroom 7096 MB after cache
+[kv] decode KV traffic = 36.9 KB per token of context (2*L*H*D*2B); at ctx=512 -> 18.9 MB/step
+[kv] plan: 12 layers x 2 (K,V) x 12 heads x 1024 pos x 64 dim x fp16 = 37.7 MB
+[kv] arena = ONE contiguous alloc; VRAM free 7073/8585 MB -> headroom 7035 MB after cache
+[kv] decode KV traffic = 36.9 KB per token of context (2*L*H*D*2B); at ctx=512 -> 18.9 MB/step
+cache,len=0,rel=0,poison=1
+cache,len=1,rel=0,poison=1
+cache,len=3,rel=0,poison=1
+cache,len=64,rel=0,poison=1
+cache,len=65,rel=0,poison=1
+cache,len=128,rel=0,poison=1
+cache,len=256,rel=0,poison=1
+cache,len=512,rel=0,poison=1
+cache,len=513,rel=0,poison=1
+cache,len=1024,rel=0,poison=1
+cache,len=18,rel=0,poison=0
+cache,len=80,rel=0,poison=0
+cache,len=145,rel=0,poison=0
+cache,len=529,rel=0,poison=0
+cache,len=1024,rel=0,poison=0
+ALL PASS backend=gemv, all positions+reset+prefill+speed topology; max layer=0, logit=0, KL=5.71775142e-17

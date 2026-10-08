@@ -1,0 +1,11 @@
+[kv] plan: 12 layers x 2 (K,V) x 12 heads x 1024 pos x 64 dim x fp16 = 37.7 MB
+[kv] arena = ONE contiguous alloc; VRAM free 7194/8585 MB -> headroom 7157 MB after cache
+[kv] decode KV traffic = 36.9 KB per token of context (2*L*H*D*2B); at ctx=512 -> 18.9 MB/step
+[kv] plan: 12 layers x 2 (K,V) x 12 heads x 1024 pos x 64 dim x fp16 = 37.7 MB
+[kv] arena = ONE contiguous alloc; VRAM free 7133/8585 MB -> headroom 7096 MB after cache
+[kv] decode KV traffic = 36.9 KB per token of context (2*L*H*D*2B); at ctx=512 -> 18.9 MB/step
+PASS: 1024 sequential positions; bit-exact finite logits/layers; KV and boundary checks
+PASS: prefill-to-decode; graph reuse; changed tokens; lengths 1/63/128/512/1007
+PASS: 128 free-running greedy steps; independent caches; exact logits/tokens
+PASS: no-diagnostic speed graph, all 1024 positions and final KV
+ALL PASS backend=gemv; no thresholds changed

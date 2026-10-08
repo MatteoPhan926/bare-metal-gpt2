@@ -1,0 +1,6 @@
+Capture range started in the application.
+Capture range ended in the application.
+Generating 'E:\CodexTemp\nsys-report-32db.qdstrm'
+[1/1] [0%                          ] trace.nsys-rep[1/1] [0%                          ] trace.nsys-rep[1/1] [===========53%              ] trace.nsys-rep[1/1] [========================100%] trace.nsys-rep[1/1] [========================100%] trace.nsys-rep
+Generated:
+    E:\Downloads\metal_gpt\docs/phase22/profile/ordered4_1023/trace.nsys-rep

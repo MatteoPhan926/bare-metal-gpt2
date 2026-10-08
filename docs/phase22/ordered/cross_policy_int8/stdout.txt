@@ -1,0 +1,28 @@
+attention policy: ordered4
+[quant] weights/gpt2_124m_int8_kt.bin: 48/49 tensors int8 (84.9 MB + 0.33 MB scales) + 1 kept fp16 (77.2 MB)
+[quant] streamed weight bytes = 162.5 MB  -> decode ceilings [copy 1437 / read 1532 / theo 1576 tok/s]
+[kv] plan: 12 layers x 2 (K,V) x 12 heads x 1024 pos x 64 dim x fp16 = 37.7 MB
+[kv] arena = ONE contiguous alloc; VRAM free 7106/8585 MB -> headroom 7068 MB after cache
+[kv] decode KV traffic = 36.9 KB per token of context (2*L*H*D*2B); at ctx=512 -> 18.9 MB/step
+[kv] plan: 12 layers x 2 (K,V) x 12 heads x 1024 pos x 64 dim x fp16 = 37.7 MB
+[kv] arena = ONE contiguous alloc; VRAM free 7047/8585 MB -> headroom 7010 MB after cache
+[kv] decode KV traffic = 36.9 KB per token of context (2*L*H*D*2B); at ctx=512 -> 18.9 MB/step
+[kv] plan: 12 layers x 2 (K,V) x 12 heads x 1024 pos x 64 dim x fp16 = 37.7 MB
+[kv] arena = ONE contiguous alloc; VRAM free 6987/8585 MB -> headroom 6949 MB after cache
+[kv] decode KV traffic = 36.9 KB per token of context (2*L*H*D*2B); at ctx=512 -> 18.9 MB/step
+cache,len=0,rel=0,poison=1
+cache,len=1,rel=0,poison=1
+cache,len=3,rel=0,poison=1
+cache,len=64,rel=0,poison=1
+cache,len=65,rel=0,poison=1
+cache,len=128,rel=0,poison=1
+cache,len=256,rel=0,poison=1
+cache,len=512,rel=0,poison=1
+cache,len=513,rel=0,poison=1
+cache,len=1024,rel=0,poison=1
+cache,len=18,rel=0,poison=0
+cache,len=80,rel=0,poison=0
+cache,len=145,rel=0,poison=0
+cache,len=529,rel=0,poison=0
+cache,len=1024,rel=0,poison=0
+ALL PASS backend=int8, all positions+reset+prefill+speed topology; max layer=0, logit=0, KL=5.13127524e-17
